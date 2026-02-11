@@ -1,0 +1,34 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+# Next.js configuration for Netlify
+# Note: @netlify/plugin-nextjs is automatically detected, but you can install it explicitly:
+# npm install --save-dev @netlify/plugin-nextjs
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Function configuration for API routes
+[functions]
+  node_bundler = "esbuild"
+  included_files = ["node_modules/**"]
+
+# Redirect rules for Next.js
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/next"
+  status = 200
+
+# Headers for security
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
