@@ -37,6 +37,7 @@ const AddSectionsModal: React.FC<AddSectionsModalProps> = ({
   onRemoveSection
 }) => {
   const availableSections = [
+    { id: 'summary', label: 'Professional Summary', icon: FileText, description: 'Write a professional summary or objective statement that highlights your key qualifications and career goals.' },
     { id: 'education', label: 'Education', icon: GraduationCap, description: 'Show off your primary education, college degrees & exchange semesters.' },
     { id: 'experience', label: 'Professional Experience', icon: Briefcase, description: 'A place to highlight your professional experience - including internships.' },
     { id: 'skills', label: 'Technical Skills', icon: Code, description: 'List your technical skills and expertise in this section.' },
@@ -72,13 +73,13 @@ const AddSectionsModal: React.FC<AddSectionsModalProps> = ({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[1] bg-black/50 backdrop-blur-sm"
-          style={{ 
-            position: 'fixed', 
-            top: 0, 
-            left: 0, 
-            right: 0, 
-            bottom: 0, 
-            width: '100vw', 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
             height: '100vh',
             zIndex: 999999
           }}
@@ -89,9 +90,9 @@ const AddSectionsModal: React.FC<AddSectionsModalProps> = ({
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.95, opacity: 0 }}
             className="bg-white w-full h-full overflow-hidden"
-            style={{ 
-              width: '100%', 
-              height: '100%', 
+            style={{
+              width: '100%',
+              height: '100%',
               position: 'relative'
             }}
             onClick={(e) => e.stopPropagation()}
@@ -102,7 +103,7 @@ const AddSectionsModal: React.FC<AddSectionsModalProps> = ({
                 <h2 className="text-2xl font-bold text-gray-900">Add content</h2>
                 <div className="flex items-center space-x-2 mt-2">
                   <span className="text-sm text-gray-600">Quick start:</span>
-                  <button className="flex items-center space-x-2 px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-sm hover:bg-purple-200 transition-colors">
+                  <button className="flex items-center space-x-2 px-3 py-1 bg-orange-100 text-orange-700 rounded-lg text-sm hover:bg-orange-200 transition-colors">
                     <FileText className="w-4 h-4" />
                     <span>Import Resume</span>
                   </button>
@@ -115,22 +116,22 @@ const AddSectionsModal: React.FC<AddSectionsModalProps> = ({
                 <X className="w-6 h-6 text-gray-600" />
               </button>
             </div>
-            
+
             {/* Modal Content */}
             <div className="p-6 overflow-y-auto h-[calc(100vh-120px)] bg-white">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-7xl mx-auto">
                 {availableSections.map((section) => {
                   const isSelected = selectedSections.includes(section.id);
                   const Icon = section.icon;
-                  
+
                   return (
                     <motion.div
                       key={section.id}
                       className={cn(
                         "p-4 rounded-lg border cursor-pointer transition-all duration-200 bg-white",
-                        isSelected 
-                          ? "border-blue-500 bg-blue-50 shadow-sm" 
-                          : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
+                        isSelected
+                          ? "border-orange-500 bg-orange-50 shadow-sm"
+                          : "border-gray-200 hover:border-orange-300 hover:bg-gray-50"
                       )}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
@@ -139,14 +140,14 @@ const AddSectionsModal: React.FC<AddSectionsModalProps> = ({
                       <div className="flex items-start space-x-3">
                         <div className={cn(
                           "flex-shrink-0 p-2 rounded-lg",
-                          isSelected ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-600"
+                          isSelected ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-600"
                         )}>
                           <Icon className="w-5 h-5" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <h3 className={cn(
                             "font-semibold text-sm mb-1",
-                            isSelected ? "text-blue-700" : "text-gray-900"
+                            isSelected ? "text-orange-700" : "text-gray-900"
                           )}>
                             {section.label}
                           </h3>

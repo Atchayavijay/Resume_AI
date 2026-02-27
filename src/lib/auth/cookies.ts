@@ -6,7 +6,7 @@ const REFRESH_COOKIE = 'refresh_token';
 const COOKIE_OPTS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
+  sameSite: 'strict' as const,
   path: '/',
   maxAge: 60 * 60 * 24 * 7, // 7 days for refresh
 };

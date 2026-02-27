@@ -84,7 +84,7 @@ async function generateAIAnalysis(
 
     // Parse AI response as JSON
     const analysis: AIResumeAnalysis = JSON.parse(response);
-    
+
     // Validate and ensure all required fields are present
     return validateAndEnhanceAnalysis(analysis);
   } catch (error) {
@@ -121,7 +121,7 @@ Return your analysis as a valid JSON object matching the AIResumeAnalysis interf
         content: prompt
       }
     ],
-    model: "llama-3.1-70b-versatile",
+    model: "llama-3.3-70b-versatile",
     stream: false,
     temperature: 0.7,
     max_tokens: 2500,
@@ -153,33 +153,33 @@ function generateEnhancedFallbackResponse(prompt: string): string {
   const hasExperience = prompt.includes('"experience":[') && !prompt.includes('"experience":[]');
   const hasSkills = prompt.includes('"skills":[') && !prompt.includes('"skills":[]');
   const hasEducation = prompt.includes('"education":[');
-  
+
   // Count achievements for better scoring
   // Removed unused variable achievementCount
   const hasQuantifiedMetrics = /\d+%|\d+\s*(million|thousand|k|m|percent|years?|months?)/.test(prompt);
-  
+
   // Intelligent scoring based on content
   const baseScore = hasExperience ? 70 : 45;
   const experienceBonus = hasExperience ? 10 : 0;
   const skillsBonus = hasSkills ? 8 : 0;
   const metricsBonus = hasQuantifiedMetrics ? 12 : 0;
   const jobAlignmentBonus = hasJobDescription ? 10 : 0;
-  
+
   const finalScore = Math.min(100, baseScore + experienceBonus + skillsBonus + metricsBonus + jobAlignmentBonus);
 
   return JSON.stringify({
     overallScore: finalScore,
-    overallFeedback: hasJobDescription 
+    overallFeedback: hasJobDescription
       ? `Your resume demonstrates relevant professional experience with a ${finalScore}% compatibility score. The analysis shows ${hasQuantifiedMetrics ? 'strong use of quantified achievements' : 'opportunities to add more specific metrics'} and ${hasSkills ? 'a comprehensive skills section' : 'room to enhance your skills presentation'}. ${finalScore >= 80 ? 'This is a competitive resume that should perform well in ATS systems.' : 'Consider the recommendations below to strengthen your resume\'s impact.'}`
       : `Your resume shows professional development with a ${finalScore}% score based on standard best practices. ${hasQuantifiedMetrics ? 'Your use of specific metrics strengthens your achievements.' : 'Adding quantified results would significantly improve impact.'} ${hasSkills ? 'Your skills section provides good technical foundation.' : 'A dedicated skills section would enhance visibility.'} Providing a target job description would enable more targeted feedback.`,
     categories: {
       content: {
         score: Math.min(100, finalScore + (hasQuantifiedMetrics ? 10 : -15)),
-        feedback: hasQuantifiedMetrics 
+        feedback: hasQuantifiedMetrics
           ? "Content demonstrates strong achievement focus with quantified results that recruiters value."
           : "Content shows professional experience but would benefit from more specific, measurable achievements.",
         specificIssues: hasQuantifiedMetrics ? [] : ["Limited use of specific numbers and percentages", "Some achievements lack quantifiable impact"],
-        improvements: hasQuantifiedMetrics 
+        improvements: hasQuantifiedMetrics
           ? ["Continue emphasizing quantified results", "Ensure all major achievements include metrics"]
           : ["Add specific percentages, dollar amounts, or time savings", "Transform vague accomplishments into measurable results"],
         examples: ["'Increased team productivity by 40%' instead of 'Improved team efficiency'", "'Managed $2M budget' instead of 'Responsible for budget management'"]
@@ -193,16 +193,16 @@ function generateEnhancedFallbackResponse(prompt: string): string {
       },
       skills: {
         score: hasSkills ? Math.min(100, finalScore + 15) : Math.max(30, finalScore - 25),
-        feedback: hasSkills 
-          ? hasJobDescription 
+        feedback: hasSkills
+          ? hasJobDescription
             ? "Skills section present with good coverage. Consider aligning more closely with job requirements."
             : "Skills section provides solid foundation. Would benefit from job-specific targeting."
           : "Skills section missing or underdeveloped. This is crucial for ATS optimization and recruiter screening.",
         specificIssues: hasSkills ? ["Generic skill descriptions"] : ["Missing dedicated skills section", "Limited technical skill visibility"],
-        improvements: hasSkills 
+        improvements: hasSkills
           ? ["Prioritize skills mentioned in target job descriptions", "Add proficiency levels where relevant"]
           : ["Create comprehensive skills section with technical and soft skills", "Include industry-specific tools and technologies"],
-        examples: hasSkills 
+        examples: hasSkills
           ? ["React.js (Expert), Node.js (Advanced)", "Project Management (5+ years)"]
           : ["Technical Skills: JavaScript, Python, AWS", "Soft Skills: Leadership, Communication, Problem-solving"]
       },
@@ -244,33 +244,33 @@ function generateEnhancedFallbackResponse(prompt: string): string {
       "Enhance professional summary impact"
     ].slice(0, 3),
     personalizedRecommendations: [
-      hasQuantifiedMetrics 
+      hasQuantifiedMetrics
         ? "Continue emphasizing your quantified achievements - they set you apart from other candidates"
         : "Transform your achievements into quantified results (e.g., 'increased efficiency by 30%', 'managed team of 8')",
-      hasJobDescription 
+      hasJobDescription
         ? "Research and incorporate 5-7 key terms from your target job description naturally throughout your resume"
         : "Identify 2-3 target roles and tailor your resume with relevant keywords for each application",
-      hasSkills 
+      hasSkills
         ? "Prioritize your most relevant skills at the top of your skills section based on job requirements"
         : "Create a dedicated skills section with 8-12 relevant technical and soft skills",
       "Write a compelling 2-3 line professional summary that immediately communicates your unique value proposition",
-      finalScore >= 75 
+      finalScore >= 75
         ? "Your resume is strong - focus on fine-tuning for specific opportunities"
         : "Focus on adding quantified achievements and job-relevant keywords to boost your competitiveness"
     ],
     atsCompatibility: {
       score: Math.min(100, finalScore + (hasSkills ? 10 : -10)),
-      parseability: hasSkills && hasExperience 
+      parseability: hasSkills && hasExperience
         ? "Excellent - Resume structure and content will parse well in ATS systems"
         : "Good - Standard formatting will work with most ATS, but content optimization needed",
-      keywordMatch: hasJobDescription 
-        ? hasSkills 
+      keywordMatch: hasJobDescription
+        ? hasSkills
           ? "Strong keyword foundation with room for targeted enhancement"
           : "Moderate - Skills section development would improve keyword density"
         : "Cannot assess without target job description - this significantly impacts ATS performance",
       suggestions: [
         "Use standard section headers (Experience, Education, Skills) for optimal ATS recognition",
-        hasJobDescription 
+        hasJobDescription
           ? "Include 6-8 key terms from the job description naturally in your content"
           : "Research target job postings and incorporate relevant industry keywords",
         "Ensure all major achievements include relevant action verbs and industry terms",
@@ -278,11 +278,11 @@ function generateEnhancedFallbackResponse(prompt: string): string {
       ]
     },
     competitiveAnalysis: {
-      industryComparison: finalScore >= 80 
+      industryComparison: finalScore >= 80
         ? "Resume performs above average compared to industry standards with strong competitive positioning"
-        : finalScore >= 65 
-        ? "Resume meets industry standards with clear opportunities for competitive advantage"
-        : "Resume needs strengthening to compete effectively in current job market",
+        : finalScore >= 65
+          ? "Resume meets industry standards with clear opportunities for competitive advantage"
+          : "Resume needs strengthening to compete effectively in current job market",
       standoutFactors: [
         ...(hasQuantifiedMetrics ? ["Quantified achievement focus"] : []),
         ...(hasExperience ? ["Relevant professional experience"] : []),
@@ -293,7 +293,7 @@ function generateEnhancedFallbackResponse(prompt: string): string {
       gapAnalysis: [
         ...(hasQuantifiedMetrics ? [] : ["Top candidates consistently use specific metrics and percentages"]),
         ...(hasSkills ? [] : ["Most competitive resumes include comprehensive skills sections"]),
-        hasJobDescription 
+        hasJobDescription
           ? "Opportunity to better align with specific role requirements through keyword optimization"
           : "Need to define target roles for effective positioning against other candidates",
         finalScore < 75 ? "Overall content depth and impact need enhancement to match top-tier candidates" : "Minor optimizations needed to reach top-tier status"
@@ -308,7 +308,7 @@ function createAnalysisPrompt(
   jobDescription?: string
 ): string {
   const hasJobDescription = jobDescription && jobDescription.length > 50;
-  
+
   return `
 Please analyze this resume comprehensively and provide detailed, personalized feedback:
 
@@ -364,10 +364,10 @@ Also provide:
 - ATS compatibility assessment with specific suggestions
 - Competitive analysis for the industry/role
 
-${hasJobDescription ? 
-  'Focus heavily on alignment with the target job description and provide specific keyword recommendations.' : 
-  'Provide general best practices since no specific job target is provided.'
-}
+${hasJobDescription ?
+      'Focus heavily on alignment with the target job description and provide specific keyword recommendations.' :
+      'Provide general best practices since no specific job target is provided.'
+    }
 
 Return as valid JSON matching the AIResumeAnalysis interface structure.
 `;
@@ -376,7 +376,7 @@ Return as valid JSON matching the AIResumeAnalysis interface structure.
 function validateAndEnhanceAnalysis(analysis: AIResumeAnalysis): AIResumeAnalysis {
   // Ensure all scores are within valid range
   analysis.overallScore = Math.max(0, Math.min(100, analysis.overallScore || 50));
-  
+
   Object.keys(analysis.categories).forEach(key => {
     const category = analysis.categories[key as keyof typeof analysis.categories];
     category.score = Math.max(0, Math.min(100, category.score || 50));
@@ -405,12 +405,12 @@ function generateFallbackAnalysis(
   const hasJobDesc = jobDescription && jobDescription.length > 50;
   const hasExperience = resumeData.experience.length > 0;
   const hasSkills = resumeData.skills.length > 0;
-  
+
   const baseScore = hasExperience ? 70 : 50;
-  
+
   return {
     overallScore: baseScore,
-    overallFeedback: hasJobDesc 
+    overallFeedback: hasJobDesc
       ? "Your resume shows relevant experience. Consider aligning more closely with the target job requirements."
       : "Your resume demonstrates professional experience. Adding a target job description would enable more specific feedback.",
     categories: {

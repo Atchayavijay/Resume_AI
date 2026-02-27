@@ -29,9 +29,8 @@ export default function LandingHeader() {
 
   return (
     <header
-      className={`sticky top-0 z-50 w-full border-b border-orange-200/30 transition-all duration-300 ${
-        scrolled ? 'glass-card bg-white/80 backdrop-blur-md shadow-sm' : 'glass-card'
-      }`}
+      className={`sticky top-0 z-50 w-full border-b border-orange-200/30 transition-all duration-300 ${scrolled ? 'glass-card bg-white/80 backdrop-blur-md shadow-sm' : 'glass-card'
+        }`}
     >
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 sm:h-20 items-center justify-between">
@@ -81,8 +80,11 @@ export default function LandingHeader() {
                     <LogOut className="h-4 w-4 mr-2" />
                     Logout
                   </Button>
+                  <Button asChild variant="ghost" className="rounded-xl text-muted-foreground hover:text-foreground hidden sm:flex">
+                    <Link href="/dashboard">My Resumes</Link>
+                  </Button>
                   <Button asChild className="gradient-primary text-white font-semibold rounded-xl">
-                    <Link href="/templates">Start Building</Link>
+                    <Link href="/dashboard">Dashboard</Link>
                   </Button>
                 </>
               ) : (
@@ -97,7 +99,7 @@ export default function LandingHeader() {
                     <Link href="/signup">Sign up</Link>
                   </Button>
                   <Button asChild variant="outline" className="rounded-xl">
-                    <Link href="/login?redirect=/templates">Start Building</Link>
+                    <Link href="/login?redirect=/dashboard">Start Building</Link>
                   </Button>
                 </>
               )
@@ -152,8 +154,8 @@ export default function LandingHeader() {
                   <>
                     <span className="text-sm text-muted-foreground py-2">{user.name}</span>
                     <Button asChild className="gradient-primary text-white font-semibold rounded-xl w-full">
-                      <Link href="/templates" onClick={() => setMobileMenuOpen(false)}>
-                        Start Building
+                      <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>
+                        My Resumes
                       </Link>
                     </Button>
                     <Button
@@ -180,7 +182,7 @@ export default function LandingHeader() {
                       </Link>
                     </Button>
                     <Button asChild variant="outline" className="w-full rounded-xl">
-                      <Link href="/login?redirect=/templates" onClick={() => setMobileMenuOpen(false)}>
+                      <Link href="/login?redirect=/dashboard" onClick={() => setMobileMenuOpen(false)}>
                         Start Building
                       </Link>
                     </Button>

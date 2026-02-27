@@ -28,27 +28,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      // First, try to get user info with current token
+      let res = await fetch('/api/auth/me', { credentials: 'include' });
+
+      // If unauthorized, try to refresh the token first
+      if (res.status === 401) {
+        console.log('Access token expired, refreshing...');
+        const refreshRes = await fetch('/api/auth/refresh', {
+          method: 'POST',
+          credentials: 'include',
+        });
+
+        if (refreshRes.ok) {
+          console.log('Token refreshed, retrying /me...');
+          // Retry getting user info with the new token
+          res = await fetch('/api/auth/me', { credentials: 'include' });
+        } else {
+          console.log('Token refresh failed');
+          setUser(null);
+          setLoading(false);
+          setInitialized(true);
+          return;
+        }
+      }
+
+      // Process the response
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
       } else {
         setUser(null);
-        if (res.status === 401) {
-          const refreshRes = await fetch('/api/auth/refresh', {
-            method: 'POST',
-            credentials: 'include',
-          });
-          if (refreshRes.ok) {
-            const meRes = await fetch('/api/auth/me', { credentials: 'include' });
-            if (meRes.ok) {
-              const data = await meRes.json();
-              setUser(data.user);
-            }
-          }
-        }
       }
-    } catch {
+    } catch (error) {
+      console.error('Refresh error:', error);
       setUser(null);
     } finally {
       setLoading(false);

@@ -13,74 +13,102 @@ export const useResumePagination = (
     renderItem: (item: any) => React.ReactNode,
     pageDimensions: Dimensions
 ) => {
+    const { height: PAGE_HEIGHT, marginTop: PAGE_PADDING_TOP = 40, marginBottom: PAGE_PADDING_BOTTOM = 40 } = pageDimensions;
+    const USABLE_PAGE_HEIGHT = PAGE_HEIGHT - PAGE_PADDING_TOP - PAGE_PADDING_BOTTOM - 10; // Extra 10px safety to prevent rounding issues at bottom limit
     const [pages, setPages] = useState<any[][]>([]);
     const [measuring, setMeasuring] = useState(true);
     const containerRef = useRef<HTMLDivElement>(null);
-
-    // We use a simplified ID mapping to track heights
     const [itemHeights, setItemHeights] = useState<Record<string, number>>({});
 
     useLayoutEffect(() => {
         if (!containerRef.current) return;
 
-        // Measure all children
-        const newHeights: Record<string, number> = {};
-        const children = Array.from(containerRef.current.children) as HTMLElement[];
-        let hasChanges = false;
+        const measure = () => {
+            if (!containerRef.current) return;
 
-        children.forEach((child) => {
-            const id = child.getAttribute('data-id');
-            if (id) {
-                const style = window.getComputedStyle(child);
-                const margin = parseFloat(style.marginTop) + parseFloat(style.marginBottom);
-                const height = child.offsetHeight + margin;
-                newHeights[id] = height;
+            const newHeights: Record<string, number> = {};
+            const children = Array.from(containerRef.current.children) as HTMLElement[];
+            let hasChanges = false;
 
-                if (itemHeights[id] !== height) {
-                    hasChanges = true;
+            children.forEach((child) => {
+                const id = child.getAttribute('data-id');
+                if (id) {
+                    const rect = child.getBoundingClientRect();
+                    let height = rect.height;
+
+                    // Add margins from the inner rendered element (the resume-item)
+                    const firstChild = child.firstElementChild;
+                    if (firstChild) {
+                        const style = window.getComputedStyle(firstChild);
+                        const marginTop = parseFloat(style.marginTop) || 0;
+                        const marginBottom = parseFloat(style.marginBottom) || 0;
+                        height += marginTop + marginBottom;
+                    }
+
+                    newHeights[id] = height;
+
+                    if (itemHeights[id] !== height) {
+                        hasChanges = true;
+                    }
                 }
+            });
+
+            if (!hasChanges && Object.keys(newHeights).length !== Object.keys(itemHeights).length) {
+                hasChanges = true;
             }
-        });
 
-        // Check if keys are different length (e.g., new items added)
-        if (!hasChanges && Object.keys(newHeights).length !== Object.keys(itemHeights).length) {
-            hasChanges = true;
-        }
+            if (hasChanges && Object.keys(newHeights).length > 0) {
+                setItemHeights(newHeights);
+                setMeasuring(false);
+            }
+        };
 
-        // Only update if heights changed
-        if (hasChanges && Object.keys(newHeights).length > 0) {
-            setItemHeights(newHeights);
-            setMeasuring(false);
-        }
+        // Use requestAnimationFrame to wait for layout stabilization
+        const rafId = requestAnimationFrame(measure);
+        return () => cancelAnimationFrame(rafId);
     }, [items, pageDimensions.width, itemHeights]);
-    // Dependency on items means whenever resume data changes (flattened blocks), we re-measure.
 
     useEffect(() => {
         if (measuring || Object.keys(itemHeights).length === 0) return;
 
-        // Distribute items into pages
         const newPages: any[][] = [];
         let currentPage: any[] = [];
         let currentHeight = 0;
 
-        // Safety margin 
-        const MAX_HEIGHT = pageDimensions.height - (pageDimensions.marginTop || 0) - (pageDimensions.marginBottom || 0);
+        items.forEach((item, index) => {
+            const sectionHeight = itemHeights[item.id] || 0;
 
-        items.forEach((item) => {
-            const h = itemHeights[item.id] || 0;
+            // Check if we should break page
+            let shouldBreak = false;
 
-            // If item is too tall for a single page (rare for normal resume items, but check), 
-            // we might need to handle it. For now, we assume items < page height.
-            // If adding this item exceeds max height:
-            if (currentHeight + h > MAX_HEIGHT && currentPage.length > 0) {
-                // Push current page
+            if (currentPage.length > 0) {
+                // Standard break if item doesn't fit
+                if (currentHeight + sectionHeight > USABLE_PAGE_HEIGHT) {
+                    shouldBreak = true;
+                }
+                // --- Keep with Next Logic ---
+                // If this is a title or a header block, check if at least one content block follows it on the same page
+                else if (
+                    (item.type === 'section-title' || (item.type === 'section-item' && item.content?._renderType === 'header')) &&
+                    index < items.length - 1
+                ) {
+                    const nextItem = items[index + 1];
+                    const nextHeight = itemHeights[nextItem.id] || 0;
+
+                    // If title/header + next item > remaining space, break now to keep them together
+                    if (currentHeight + sectionHeight + nextHeight > USABLE_PAGE_HEIGHT) {
+                        shouldBreak = true;
+                    }
+                }
+            }
+
+            if (shouldBreak) {
                 newPages.push(currentPage);
-                // Start new page
                 currentPage = [item];
-                currentHeight = h;
+                currentHeight = sectionHeight;
             } else {
                 currentPage.push(item);
-                currentHeight += h;
+                currentHeight += sectionHeight;
             }
         });
 
@@ -88,16 +116,12 @@ export const useResumePagination = (
             newPages.push(currentPage);
         }
 
-        // Check if pages actually changed to limit updates
-        // Simple check: same number of pages? same first item of first page?
-        // For deep check we can use JSON.stringify for simplicity given it's not massive data
         const isSame = JSON.stringify(newPages) === JSON.stringify(pages);
-
         if (!isSame) {
             setPages(newPages);
         }
 
-    }, [items, itemHeights, measuring, pageDimensions, pages]);
+    }, [items, itemHeights, measuring, pages, USABLE_PAGE_HEIGHT]);
 
     return {
         pages,

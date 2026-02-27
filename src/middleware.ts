@@ -3,9 +3,9 @@ import type { NextRequest } from 'next/server';
 import * as jose from 'jose';
 
 const ACCESS_COOKIE = 'access_token';
+const REFRESH_COOKIE = 'refresh_token';
 
-async function verifyToken(token: string): Promise<boolean> {
-  const secret = process.env.JWT_ACCESS_SECRET;
+async function verifyToken(token: string, secret: string): Promise<boolean> {
   if (!secret || secret.length < 32) return false;
   const key = new TextEncoder().encode(secret);
   try {
@@ -16,21 +16,65 @@ async function verifyToken(token: string): Promise<boolean> {
   }
 }
 
+async function tryRefreshToken(request: NextRequest): Promise<NextResponse | null> {
+  const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
+  if (!refreshToken) return null;
+
+  try {
+    // Create a request to the refresh endpoint
+    const refreshUrl = new URL('/api/auth/refresh', request.url);
+    const refreshResponse = await fetch(refreshUrl.toString(), {
+      method: 'POST',
+      headers: {
+        Cookie: `${REFRESH_COOKIE}=${refreshToken}`,
+      },
+    });
+
+    if (!refreshResponse.ok) {
+      return null;
+    }
+
+    // Get the new cookies from the refresh response
+    const setCookieHeaders = refreshResponse.headers.getSetCookie();
+
+    // Create a response that continues the request
+    const response = NextResponse.next();
+
+    // Copy the new auth cookies to the response
+    setCookieHeaders.forEach(cookie => {
+      response.headers.append('Set-Cookie', cookie);
+    });
+
+    return response;
+  } catch (error) {
+    console.error('Token refresh failed in middleware:', error);
+    return null;
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  const protectedPaths = ['/builder', '/generate', '/templates'];
-  const protectedApiPrefix = '/api/resumes';
+  const protectedPaths = ['/builder', '/generate', '/templates', '/dashboard'];
+  const protectedApiPrefixes = ['/api/resumes', '/api/export-pdf'];
   const isProtectedPage = protectedPaths.some((p) => pathname.startsWith(p));
-  const isProtectedApi = pathname.startsWith(protectedApiPrefix);
+  const isProtectedApi = protectedApiPrefixes.some((p) => pathname.startsWith(p));
 
   if (!isProtectedPage && !isProtectedApi) {
     return NextResponse.next();
   }
 
   const token = request.cookies.get(ACCESS_COOKIE)?.value ?? null;
+  const accessSecret = process.env.JWT_ACCESS_SECRET || '';
 
+  // If no access token, try to refresh immediately
   if (!token) {
+    const refreshedResponse = await tryRefreshToken(request);
+    if (refreshedResponse) {
+      return refreshedResponse;
+    }
+
+    // No token and refresh failed - redirect to login
     if (isProtectedPage) {
       const url = new URL('/login', request.url);
       url.searchParams.set('redirect', pathname);
@@ -39,8 +83,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const valid = await verifyToken(token);
+  // Verify the access token
+  const valid = await verifyToken(token, accessSecret);
   if (!valid) {
+    // Token is invalid/expired - try to refresh
+    const refreshedResponse = await tryRefreshToken(request);
+    if (refreshedResponse) {
+      return refreshedResponse;
+    }
+
+    // Refresh failed - redirect to login
     if (isProtectedPage) {
       const url = new URL('/login', request.url);
       url.searchParams.set('redirect', pathname);
@@ -53,5 +105,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/builder/:path*', '/generate/:path*', '/templates/:path*', '/api/resumes/:path*'],
+  matcher: ['/builder/:path*', '/generate/:path*', '/templates/:path*', '/dashboard/:path*', '/api/resumes/:path*', '/api/export-pdf/:path*'],
 };

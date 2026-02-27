@@ -46,6 +46,7 @@ function buildDesignFromSpec(spec: TemplateSpec): ResumeDesign {
 
   let design: ResumeDesign = {
     ...DEFAULT_DESIGN,
+    templateId: spec.id,
     layout: {
       ...DEFAULT_DESIGN.layout,
       ...layout,

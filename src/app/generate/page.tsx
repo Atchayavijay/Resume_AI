@@ -10,6 +10,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import ResumePreview from '@/components/ResumePreview';
 import type { ResumeData } from '@/lib/types';
 import { loadResumeData, saveResumeData, sanitizeSummary, loadResumeDataFromDB, saveResumeDataToDB } from '@/lib/utils';
+import { apiClient } from '@/lib/apiClient';
 
 const GeneratePage = () => {
   const router = useRouter();
@@ -35,7 +36,7 @@ const GeneratePage = () => {
         setJobDetails(dbData.jobTarget?.description || dbData.jobDescription || '');
         return;
       }
-      
+
       // Fallback to localStorage
       const stored = loadResumeData();
       if (!stored) {
@@ -47,7 +48,7 @@ const GeneratePage = () => {
         setJobDetails(stored.jobTarget?.description || stored.jobDescription || '');
       }
     };
-    
+
     loadData();
   }, []);
 
@@ -75,7 +76,7 @@ const GeneratePage = () => {
     };
 
     try {
-      const response = await fetch('/api/generate', {
+      const response = await apiClient('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -162,9 +163,8 @@ const GeneratePage = () => {
       </header>
 
       <main
-        className={`max-w-7xl mx-auto px-3 sm:px-6 pb-10 grid gap-6 ${
-          promptVisible && previewVisible ? 'lg:grid-cols-12' : 'grid-cols-1'
-        }`}
+        className={`max-w-7xl mx-auto px-3 sm:px-6 pb-10 grid gap-6 ${promptVisible && previewVisible ? 'lg:grid-cols-12' : 'grid-cols-1'
+          }`}
       >
         <Card className={`border border-slate-200 shadow-lg ${previewVisible ? 'lg:col-span-5' : 'w-full'}`}>
           <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -192,63 +192,63 @@ const GeneratePage = () => {
             </Button>
           </CardHeader>
           {promptVisible && (
-          <CardContent>
-            <form className="space-y-5" onSubmit={handleGenerate}>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Target Job Title</label>
-                <Input
-                  value={position}
-                  onChange={(e) => setPosition(e.target.value)}
-                  placeholder="e.g., Senior Product Manager"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Target Company (Optional)</label>
-                <Input
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                  placeholder="e.g., Microsoft"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Job Description / Requirements</label>
-                <Textarea
-                  value={jobDetails}
-                  onChange={(e) => setJobDetails(e.target.value)}
-                  placeholder="Paste the job description or key responsibilities here..."
-                  rows={5}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Additional Prompts (Optional)</label>
-                <Textarea
-                  value={additionalPrompts}
-                  onChange={(e) => setAdditionalPrompts(e.target.value)}
-                  placeholder="Anything specific you'd like the AI to emphasize? (e.g., leadership, certifications, tone)"
-                  rows={4}
-                />
-              </div>
-
-              {error && (
-                <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md p-2">
-                  {error}
+            <CardContent>
+              <form className="space-y-5" onSubmit={handleGenerate}>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Target Job Title</label>
+                  <Input
+                    value={position}
+                    onChange={(e) => setPosition(e.target.value)}
+                    placeholder="e.g., Senior Product Manager"
+                    required
+                  />
                 </div>
-              )}
 
-              <Button
-                type="submit"
-                className="w-full justify-center gradient-primary text-white font-medium"
-                disabled={loading || !resumeData}
-              >
-                <Sparkles className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                {loading ? 'Generating Resume...' : 'Generate New Resume'}
-              </Button>
-            </form>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Target Company (Optional)</label>
+                  <Input
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                    placeholder="e.g., Microsoft"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Job Description / Requirements</label>
+                  <Textarea
+                    value={jobDetails}
+                    onChange={(e) => setJobDetails(e.target.value)}
+                    placeholder="Paste the job description or key responsibilities here..."
+                    rows={5}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Additional Prompts (Optional)</label>
+                  <Textarea
+                    value={additionalPrompts}
+                    onChange={(e) => setAdditionalPrompts(e.target.value)}
+                    placeholder="Anything specific you'd like the AI to emphasize? (e.g., leadership, certifications, tone)"
+                    rows={4}
+                  />
+                </div>
+
+                {error && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md p-2">
+                    {error}
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  className="w-full justify-center gradient-primary text-white font-medium"
+                  disabled={loading || !resumeData}
+                >
+                  <Sparkles className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                  {loading ? 'Generating Resume...' : 'Generate New Resume'}
+                </Button>
+              </form>
             </CardContent>
           )}
         </Card>
@@ -280,44 +280,44 @@ const GeneratePage = () => {
               </Button>
             </CardHeader>
             {previewVisible && (
-            <CardContent>
-              <div className="bg-white rounded-xl shadow-2xl border border-slate-200 flex justify-center items-start w-full overflow-hidden">
-                {generatedData ? (
-                  <div className="w-full max-h-[calc(100vh-240px)] overflow-y-auto pr-2">
-                    <div
-                      className="a4-resume-container mx-auto"
-                      style={{ width: 'min(240mm, 100%)', minHeight: '297mm', padding: '32px' }}
-                    >
-                      <ResumePreview
-                        data={generatedData}
-                        generatedContent={generatedContent}
-                        selectedSections={[
-                          'personalInfo',
-                          'experience',
-                          'education',
-                          'skills',
-                          'certificates',
-                          'interests',
-                          'projects',
-                          'courses',
-                          'awards',
-                          'organisations',
-                          'publications',
-                          'references',
-                          'languages',
-                          'declaration',
-                          'custom'
-                        ]}
-                      />
+              <CardContent>
+                <div className="bg-white rounded-xl shadow-2xl border border-slate-200 flex justify-center items-start w-full overflow-hidden">
+                  {generatedData ? (
+                    <div className="w-full max-h-[calc(100vh-240px)] overflow-y-auto pr-2">
+                      <div
+                        className="a4-resume-container mx-auto"
+                        style={{ width: 'min(240mm, 100%)', minHeight: '297mm', padding: '32px' }}
+                      >
+                        <ResumePreview
+                          data={generatedData}
+                          generatedContent={generatedContent}
+                          selectedSections={[
+                            'personalInfo',
+                            'experience',
+                            'education',
+                            'skills',
+                            'certificates',
+                            'interests',
+                            'projects',
+                            'courses',
+                            'awards',
+                            'organisations',
+                            'publications',
+                            'references',
+                            'languages',
+                            'declaration',
+                            'custom'
+                          ]}
+                        />
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="text-sm text-slate-500 text-center py-16 w-full">
-                    Submit the form to see the regenerated resume preview.
-                  </div>
-                )}
-              </div>
-            </CardContent>
+                  ) : (
+                    <div className="text-sm text-slate-500 text-center py-16 w-full">
+                      Submit the form to see the regenerated resume preview.
+                    </div>
+                  )}
+                </div>
+              </CardContent>
             )}
           </Card>
 

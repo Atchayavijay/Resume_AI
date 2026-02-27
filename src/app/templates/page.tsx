@@ -8,54 +8,102 @@ import { FileText, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TEMPLATES, type Template } from '@/lib/templates';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiClient } from '@/lib/apiClient';
 import { loadAllGoogleFonts } from '@/lib/utils';
+import { Eye, X } from 'lucide-react';
+import ResumePreview from '@/components/ResumePreview';
+import atsOptimizedResume from '@/lib/seed/atsOptimizedResume';
+import jaganrajResume from '@/lib/seed/jaganrajResume';
+
+const ALL_SECTIONS = [
+  'personalInfo',
+  'summary',
+  'experience',
+  'education',
+  'skills',
+  'softSkills',
+  'projects',
+  'certificates',
+  'languages',
+  'interests',
+  'awards',
+  'organisations',
+  'publications',
+  'references',
+  'declaration'
+];
 
 function TemplateThumbnail({ template }: { template: Template }) {
   const { design } = template;
   const isTwoCol = design.layout.columns === 'two' || design.layout.columns === 'mix';
+  const hasBanner = design.personalDetails?.banner === true;
+  const accentColor = design.colors.accent;
 
   return (
     <div
-      className="w-full aspect-[210/297] max-h-[280px] bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm flex flex-col"
+      className="w-full aspect-[210/297] max-h-[240px] bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm flex flex-col transition-all group-hover:shadow-md"
       style={{ fontFamily: design.typography.fontFamily }}
     >
-      <div
-        className="h-2 shrink-0"
-        style={{ backgroundColor: design.colors.accent }}
-      />
-      <div className="flex-1 p-3 flex flex-col gap-2">
-        <div className="border-b pb-2" style={{ borderColor: `${design.colors.accent}40` }}>
-          <div
-            className="font-bold text-sm truncate"
-            style={{ color: design.colors.text }}
-          >
-            John Doe
-          </div>
-          <div
-            className="text-[10px] truncate"
-            style={{ color: design.colors.accent }}
-          >
-            Software Engineer
+      {hasBanner ? (
+        <div
+          className="p-3 mb-2 flex flex-col gap-1.5 min-h-[60px]"
+          style={{ backgroundColor: accentColor, color: '#fff' }}
+        >
+          <div className="h-2 w-16 bg-white/40 rounded-full" />
+          <div className="h-1 w-24 bg-white/20 rounded-full" />
+          <div className="mt-2 flex gap-1">
+            <div className="h-1 w-8 bg-white/20 rounded-full" />
+            <div className="h-1 w-8 bg-white/20 rounded-full" />
           </div>
         </div>
-        {isTwoCol ? (
-          <div className="flex gap-2 flex-1 min-h-0">
-            <div
-              className="w-1/3 rounded"
-              style={{ backgroundColor: `${design.colors.accent}15` }}
-            />
-            <div className="flex-1 space-y-1">
-              <div className="h-1.5 rounded bg-slate-100 w-full" />
-              <div className="h-1.5 rounded bg-slate-100 w-4/5" />
-              <div className="h-1.5 rounded bg-slate-100 w-full" />
+      ) : (
+        <>
+          <div
+            className="h-1 shrink-0"
+            style={{ backgroundColor: accentColor }}
+          />
+          <div className="p-4 pb-2 border-b" style={{ borderColor: `${accentColor}20` }}>
+            <div className="h-2 w-20 rounded-full mb-1.5" style={{ backgroundColor: design.colors.text }} />
+            <div className="h-1 w-24 rounded-full" style={{ backgroundColor: accentColor, opacity: 0.6 }} />
+            <div className="mt-3 flex gap-2">
+              <div className="h-1 w-10 bg-slate-100 rounded-full" />
+              <div className="h-1 w-10 bg-slate-100 rounded-full" />
             </div>
           </div>
+        </>
+      )}
+
+      <div className="flex-1 p-4 flex gap-3 min-h-0">
+        {isTwoCol ? (
+          <>
+            <div
+              className="w-1/3 rounded-sm p-2 flex flex-col gap-2"
+              style={{ backgroundColor: `${accentColor}${hasBanner ? '08' : '10'}` }}
+            >
+              <div className="h-1 rounded-full bg-slate-100 w-full" />
+              <div className="h-1 rounded-full bg-slate-100 w-full" />
+              <div className="h-1 rounded-full bg-slate-100 w-2/3" />
+            </div>
+            <div className="flex-1 space-y-2.5">
+              <div className="h-1 rounded-full bg-slate-100 w-full" />
+              <div className="h-1 rounded-full bg-slate-100 w-full" />
+              <div className="h-1 rounded-full bg-slate-100 w-4/5" />
+              <div className="h-1.5 grow" />
+              <div className="h-1 rounded-full bg-slate-100 w-full" />
+              <div className="h-1 rounded-full bg-slate-100 w-2/3" />
+            </div>
+          </>
         ) : (
-          <div className="space-y-1 flex-1">
-            <div className="h-1.5 rounded bg-slate-100 w-full" />
-            <div className="h-1.5 rounded bg-slate-100 w-4/5" />
-            <div className="h-1.5 rounded bg-slate-100 w-full" />
-            <div className="h-1.5 rounded bg-slate-100 w-3/5" />
+          <div className="space-y-2.5 flex-1">
+            <div className="h-1 rounded-full bg-slate-100 w-full opacity-60" />
+            <div className="h-1 rounded-full bg-slate-100 w-4/5 opacity-60" />
+            <div className="h-1.5" />
+            <div className="h-1 rounded-full bg-slate-200/50 w-full" />
+            <div className="h-1 rounded-full bg-slate-200/50 w-full" />
+            <div className="h-1 rounded-full bg-slate-200/50 w-3/5" />
+            <div className="h-1.5" />
+            <div className="h-1 rounded-full bg-slate-200/50 w-full" />
+            <div className="h-1 rounded-full bg-slate-200/50 w-2/3" />
           </div>
         )}
       </div>
@@ -66,10 +114,35 @@ function TemplateThumbnail({ template }: { template: Template }) {
 export default function TemplatesPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const [previewTemplate, setPreviewTemplate] = React.useState<Template | null>(null);
+  const [userResumes, setUserResumes] = React.useState<Record<string, any>>({});
 
   useEffect(() => {
     loadAllGoogleFonts();
-  }, []);
+
+    // Fetch user's resumes to show actual content in previews if available
+    const fetchUserResumes = async () => {
+      try {
+        const response = await apiClient('/api/resumes');
+        if (response.ok) {
+          const resumes = await response.json();
+          const map: Record<string, any> = {};
+          resumes.forEach((r: any) => {
+            if (r.design?.templateId) {
+              map[r.design.templateId] = r;
+            }
+          });
+          setUserResumes(map);
+        }
+      } catch (error) {
+        console.error('Failed to fetch user resumes:', error);
+      }
+    };
+
+    if (user) {
+      fetchUserResumes();
+    }
+  }, [user]);
 
   const handleSelectTemplate = (templateId: string) => {
     router.push(`/builder?template=${templateId}`);
@@ -115,13 +188,23 @@ export default function TemplatesPage() {
               <div className="p-5">
                 <h2 className="text-lg font-bold text-foreground mb-1">{template.name}</h2>
                 <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{template.description}</p>
-                <Button
-                  onClick={() => handleSelectTemplate(template.id)}
-                  className="w-full gradient-primary text-white font-semibold group-hover:opacity-95 transition-opacity"
-                >
-                  Use this template
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setPreviewTemplate(template)}
+                    className="flex-1 border-orange-200/50 hover:bg-orange-50 hover:text-orange-600 transition-all font-semibold glass-button"
+                  >
+                    <Eye className="w-4 h-4 mr-2" />
+                    View
+                  </Button>
+                  <Button
+                    onClick={() => handleSelectTemplate(template.id)}
+                    className="flex-[2] gradient-primary text-white font-semibold group-hover:opacity-95 transition-opacity"
+                  >
+                    Use Template
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </div>
               </div>
             </motion.div>
           ))}
@@ -131,6 +214,54 @@ export default function TemplatesPage() {
           Signed in as <span className="font-medium text-foreground">{user?.email}</span>
         </p>
       </motion.div>
+
+      {/* Template Preview Modal */}
+      {previewTemplate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setPreviewTemplate(null)}>
+          <div
+            className="bg-slate-100 w-full max-w-5xl h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200 shadow-sm z-10">
+              <div className="flex flex-col">
+                <h3 className="font-bold text-lg">{previewTemplate.name}</h3>
+                <p className="text-xs text-muted-foreground">{previewTemplate.description}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={() => handleSelectTemplate(previewTemplate.id)}
+                  className="gradient-primary text-white font-semibold shadow-sm"
+                >
+                  Use This Template
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setPreviewTemplate(null)}
+                  className="rounded-full hover:bg-slate-100"
+                >
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-200/30 flex justify-center">
+              <div className="pointer-events-none select-none transform origin-top scale-[0.6] sm:scale-75 lg:scale-90 transition-transform flex flex-col gap-8 pb-20">
+                <ResumePreview
+                  data={userResumes[previewTemplate.id] || {
+                    ...(previewTemplate.persona === 'creative' ? jaganrajResume : atsOptimizedResume),
+                    jobTitle: `${previewTemplate.name} Template`,
+                    design: previewTemplate.design
+                  }}
+                  selectedSections={previewTemplate.persona === 'creative' ? ALL_SECTIONS : ['personalInfo', 'summary', 'experience', 'education', 'skills']}
+                  isSaved={!!userResumes[previewTemplate.id] || previewTemplate.id === 'jaganraj'}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUsersCollection } from '@/lib/mongodb';
-import { loginSchema } from '@/lib/auth/validation';
+import { loginSchema } from '@/lib/validation/auth.schema';
 import { verifyPassword } from '@/lib/auth/password';
 import { signAccessToken, signRefreshToken } from '@/lib/auth/jwt';
 import { setAuthCookies } from '@/lib/auth/cookies';

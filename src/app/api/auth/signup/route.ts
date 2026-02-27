@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUsersCollection, ensureAuthIndexes } from '@/lib/mongodb';
-import { signupSchema } from '@/lib/auth/validation';
+import { signupSchema } from '@/lib/validation/auth.schema';
 import { hashPassword } from '@/lib/auth/password';
 import { checkRateLimit } from '@/lib/auth/rate-limit';
 

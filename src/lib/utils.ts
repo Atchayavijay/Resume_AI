@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import type { ResumeData } from './types'
+import { apiClient } from './apiClient'
 
 /**
  * Merge Tailwind CSS classes with clsx
@@ -14,7 +15,7 @@ export function cn(...inputs: ClassValue[]) {
  */
 export function formatDate(date: string): string {
   if (!date) return '';
-  
+
   try {
     const d = new Date(date);
     return d.toLocaleDateString('en-US', {
@@ -41,7 +42,7 @@ export function debounce<T extends (...args: any[]) => any>(
   wait: number
 ): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout;
-  
+
   return (...args: Parameters<T>) => {
     clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);
@@ -83,11 +84,11 @@ export function downloadFile(content: string, filename: string, mimeType: string
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  
+
   link.href = url;
   link.download = filename;
   link.click();
-  
+
   URL.revokeObjectURL(url);
 }
 
@@ -97,7 +98,7 @@ export function downloadFile(content: string, filename: string, mimeType: string
 export const storage = {
   get<T>(key: string, fallback: T): T {
     if (typeof window === 'undefined') return fallback;
-    
+
     try {
       const item = localStorage.getItem(key);
       return item ? JSON.parse(item) : fallback;
@@ -105,17 +106,17 @@ export const storage = {
       return fallback;
     }
   },
-  
+
   set<T>(key: string, value: T): void {
     if (typeof window === 'undefined') return;
-    
+
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch (error) {
       console.error('Failed to save to localStorage:', error);
     }
   },
-  
+
   remove(key: string): void {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(key);
@@ -131,48 +132,57 @@ const CURRENT_RESUME_ID_KEY = 'current-resume-id';
 /**
  * Get current resume ID from localStorage
  */
-function getCurrentResumeId(): string | null {
+function getCurrentResumeId(templateId?: string): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(CURRENT_RESUME_ID_KEY);
+  const key = templateId ? `${CURRENT_RESUME_ID_KEY}-${templateId}` : CURRENT_RESUME_ID_KEY;
+  return localStorage.getItem(key);
 }
 
 /**
  * Set current resume ID in localStorage
  */
-function setCurrentResumeId(id: string | null): void {
+function setCurrentResumeId(id: string | null, templateId?: string): void {
   if (typeof window === 'undefined') return;
+  const key = templateId ? `${CURRENT_RESUME_ID_KEY}-${templateId}` : CURRENT_RESUME_ID_KEY;
   if (id) {
-    localStorage.setItem(CURRENT_RESUME_ID_KEY, id);
+    localStorage.setItem(key, id);
   } else {
-    localStorage.removeItem(CURRENT_RESUME_ID_KEY);
+    localStorage.removeItem(key);
   }
 }
 
 /**
  * Load resume data from MongoDB API
  */
-export async function loadResumeDataFromDB(): Promise<ResumeData | null> {
+export async function loadResumeDataFromDB(templateId?: string, explicitId?: string): Promise<ResumeData | null> {
   try {
-    const resumeId = getCurrentResumeId();
-    
+    const resumeId = explicitId || getCurrentResumeId(templateId);
+
     if (!resumeId) {
       // Try to get the most recent resume
-      const response = await fetch('/api/resumes', { credentials: 'include' });
+      const response = await apiClient('/api/resumes');
       if (!response.ok) {
         return null;
       }
       const resumes = await response.json();
       if (resumes && resumes.length > 0) {
-        setCurrentResumeId(resumes[0].id);
-        return resumes[0] as ResumeData;
+        // Find if any resume matches the templateId in its design
+        const matchingResume = templateId
+          ? resumes.find((r: any) => r.design?.templateId === templateId)
+          : resumes[0];
+
+        if (matchingResume) {
+          setCurrentResumeId(matchingResume.id, templateId);
+          return matchingResume as ResumeData;
+        }
       }
       return null;
     }
 
-    const response = await fetch(`/api/resumes?id=${resumeId}`, { credentials: 'include' });
+    const response = await apiClient(`/api/resumes?id=${resumeId}`);
     if (!response.ok) {
       // Resume not found (404) or other error - clear stale ID
-      setCurrentResumeId(null);
+      setCurrentResumeId(null, templateId);
       return null;
     }
     const data = await response.json();
@@ -188,13 +198,13 @@ export async function loadResumeDataFromDB(): Promise<ResumeData | null> {
  */
 export async function saveResumeDataToDB(data: ResumeData): Promise<string | null> {
   try {
-    const resumeId = getCurrentResumeId();
-    
+    const templateId = data.design?.templateId;
+    const resumeId = getCurrentResumeId(templateId);
+
     if (resumeId) {
       // Update existing resume
-      const response = await fetch('/api/resumes', {
+      const response = await apiClient('/api/resumes', {
         method: 'PUT',
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -206,7 +216,7 @@ export async function saveResumeDataToDB(data: ResumeData): Promise<string | nul
 
       if (response.status === 404) {
         // Resume not found (deleted, wrong user, or stale ID) - create new
-        setCurrentResumeId(null);
+        setCurrentResumeId(null, templateId);
         // Fall through to POST below
       } else if (!response.ok) {
         throw new Error('Failed to update resume');
@@ -217,9 +227,8 @@ export async function saveResumeDataToDB(data: ResumeData): Promise<string | nul
 
     {
       // Create new resume
-      const response = await fetch('/api/resumes', {
+      const response = await apiClient('/api/resumes', {
         method: 'POST',
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -231,7 +240,7 @@ export async function saveResumeDataToDB(data: ResumeData): Promise<string | nul
       }
 
       const result = await response.json();
-      setCurrentResumeId(result.id);
+      setCurrentResumeId(result.id, templateId);
       return result.id;
     }
   } catch (error) {
@@ -243,11 +252,10 @@ export async function saveResumeDataToDB(data: ResumeData): Promise<string | nul
 /**
  * Delete resume from MongoDB API
  */
-export async function deleteResumeFromDB(resumeId: string): Promise<boolean> {
+export async function deleteResumeFromDB(resumeId: string, templateId?: string): Promise<boolean> {
   try {
-    const response = await fetch(`/api/resumes?id=${resumeId}`, {
+    const response = await apiClient(`/api/resumes?id=${resumeId}`, {
       method: 'DELETE',
-      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -255,8 +263,8 @@ export async function deleteResumeFromDB(resumeId: string): Promise<boolean> {
     }
 
     // If deleted resume was current, clear the ID
-    if (getCurrentResumeId() === resumeId) {
-      setCurrentResumeId(null);
+    if (getCurrentResumeId(templateId) === resumeId) {
+      setCurrentResumeId(null, templateId);
     }
 
     return true;
@@ -269,9 +277,10 @@ export async function deleteResumeFromDB(resumeId: string): Promise<boolean> {
 /**
  * Load resume data (localStorage fallback for backward compatibility)
  */
-export function loadResumeData(): ResumeData | null {
+export function loadResumeData(templateId?: string): ResumeData | null {
   try {
-    const data = storage.get<ResumeData | null>(RESUME_DATA_KEY, null);
+    const key = templateId ? `${RESUME_DATA_KEY}-${templateId}` : RESUME_DATA_KEY;
+    const data = storage.get<ResumeData | null>(key, null);
     return data;
   } catch (error) {
     console.error('Failed to load resume data:', error);
@@ -285,9 +294,11 @@ export function loadResumeData(): ResumeData | null {
  */
 export function saveResumeData(data: ResumeData): void {
   try {
+    const templateId = data.design?.templateId;
     // Save to localStorage for backward compatibility
-    storage.set(RESUME_DATA_KEY, data);
-    
+    const key = templateId ? `${RESUME_DATA_KEY}-${templateId}` : RESUME_DATA_KEY;
+    storage.set(key, data);
+
     // Also save to MongoDB (fire and forget)
     saveResumeDataToDB(data).catch((error) => {
       console.error('Failed to save to MongoDB:', error);
@@ -300,10 +311,11 @@ export function saveResumeData(data: ResumeData): void {
 /**
  * Clear resume data (localStorage)
  */
-export function clearResumeData(): void {
+export function clearResumeData(templateId?: string): void {
   try {
-    storage.remove(RESUME_DATA_KEY);
-    setCurrentResumeId(null);
+    const key = templateId ? `${RESUME_DATA_KEY}-${templateId}` : RESUME_DATA_KEY;
+    storage.remove(key);
+    setCurrentResumeId(null, templateId);
   } catch (error) {
     console.error('Failed to clear resume data:', error);
   }
@@ -372,14 +384,14 @@ export function getGoogleFontUrl(fontFamily: string): string | null {
 export function loadGoogleFont(fontFamily: string): void {
   if (typeof window === 'undefined') return;
   if (SYSTEM_FONTS.includes(fontFamily)) return;
-  
+
   const fontUrl = getGoogleFontUrl(fontFamily);
   if (!fontUrl) return;
-  
+
   // Check if font is already loaded
   const existingLink = document.querySelector(`link[href="${fontUrl}"]`);
   if (existingLink) return;
-  
+
   const link = document.createElement('link');
   link.rel = 'stylesheet';
   link.href = fontUrl;
@@ -392,4 +404,38 @@ export function loadGoogleFont(fontFamily: string): void {
 export function loadAllGoogleFonts(): void {
   if (typeof window === 'undefined') return;
   Object.keys(GOOGLE_FONTS).forEach(font => loadGoogleFont(font));
+}
+
+/**
+ * Decode HTML entities to safe string
+ */
+// Decode HTML entities to safe string
+export function decodeHtml(html: string): string {
+  if (!html) return html;
+
+  if (typeof window === 'undefined') {
+    // Basic server-side fallback
+    return html
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&');
+  }
+
+  // Recursively decode entities (up to a limit to prevent infinite loops)
+  // This fixes the issue where content appears as "coded" HTML text (e.g. &lt;div... -> <div...)
+  // We do NOT strip styles or classes to preserve the original formatting/template.
+  const txt = document.createElement("textarea");
+  let value = html;
+  let limit = 0;
+
+  while (limit < 5 && (value.includes('&lt;') || value.includes('&amp;') || value.includes('&#') || value.includes('&quot;'))) {
+    txt.innerHTML = value;
+    if (txt.value === value) break;
+    value = txt.value;
+    limit++;
+  }
+
+  return value;
 }

@@ -60,6 +60,11 @@ export async function ensureAuthIndexes() {
   const db = await getDatabase();
   const users = db.collection('users');
   const blacklist = db.collection('token_blacklist');
+  const resumes = db.collection('resumes');
+  
   await users.createIndex({ email: 1 }, { unique: true });
   await blacklist.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  
+  // New index for optimized resume listing
+  await resumes.createIndex({ userId: 1, updatedAt: -1 });
 }

@@ -600,3 +600,53 @@
 .prose li {
   margin-bottom: 0.125rem !important;
 }
+
+/* Resume Layout Styles */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  body {
+    margin: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background: white;
+  }
+
+  .resume-page {
+    margin: 0;
+    border: none;
+    width: 210mm !important;
+    height: 297mm !important;
+    page-break-after: always;
+    break-after: page;
+    box-shadow: none !important;
+    overflow: hidden;
+  }
+}
+
+/* Resume Layout Styles - Exact A4 Pixels at 96 DPI */
+/* 210mm * 96 / 25.4 = 793.7px */
+/* 297mm * 96 / 25.4 = 1122.5px */
+.resume-page {
+  /* Dimensions handled by component style props for precision */
+  position: relative;
+  background-color: white;
+  margin: 0 auto;
+  box-sizing: border-box;
+  overflow: visible;
+  /* Prevent clipping */
+  display: flex;
+  flex-direction: column;
+}
+
+.section {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.resume-page>.section:last-child {
+  margin-bottom: 0;
+}

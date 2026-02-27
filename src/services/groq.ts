@@ -6,13 +6,28 @@ import Groq from 'groq-sdk';
 import { config } from '@/config';
 import type { ResumeData, GeneratedResume } from '@/types';
 
-const groq = new Groq({ apiKey: config.ai.apiKey });
+let groqInstance: Groq | null = null;
+function getGroqClient() {
+  if (!groqInstance) {
+    if (!config.ai.apiKey) {
+      console.error('CRITICAL: GROQ_API_KEY is missing from config');
+      throw new Error('GROQ_API_KEY is not configured. Please add it to your .env.local file.');
+    }
+    groqInstance = new Groq({ apiKey: config.ai.apiKey });
+  }
+  return groqInstance;
+}
 
 export async function generateResumeContent(resumeData: ResumeData): Promise<GeneratedResume> {
-  if (!config.ai.apiKey) throw new Error('GROQ_API_KEY is not configured');
+  const groq = getGroqClient();
 
-  const modelsToTry = ['llama-3.1-8b-instant', 'llama-3.1-70b-versatile', 'gemma2-9b-it', 'mixtral-8x7b-32768'];
-  let lastError: unknown = null;
+  // ONLY use supported and active models to avoid decommissioned errors
+  const modelsToTry = [
+    'llama-3.3-70b-versatile', // Flagship model
+    'llama-3.1-70b-versatile', // Reliable fallback
+    'llama-3.1-8b-instant'     // High-speed fallback
+  ];
+  let lastError: any = null;
 
   for (const model of modelsToTry) {
     try {
@@ -32,17 +47,29 @@ export async function generateResumeContent(resumeData: ResumeData): Promise<Gen
 
       const atsScore = calculateBasicATSScore(resumeData, content);
       return { content, atsScore };
-    } catch (error: unknown) {
+    } catch (error: any) {
       lastError = error;
-      const msg = (error as Error)?.message || '';
-      if (msg.includes('decommissioned') || msg.includes('model')) continue;
+      const msg = error?.message || '';
+      console.error(`Groq error with model ${model}:`, msg);
+
+      // If it's a model-not-found, decommissioned, or rate limit error, try next model
+      if (msg.includes('decommissioned') || msg.includes('model') || msg.includes('not found') || msg.includes('limit') || msg.includes('rate')) {
+        continue;
+      }
+
+      // If it's an auth error or other critical error, throw immediately
       throw error;
     }
   }
-  throw new Error('Failed to generate resume content. All models unavailable.');
+
+  throw new Error(`Failed to generate resume content. Last error: ${lastError?.message || 'All models unavailable'}`);
 }
 
 function createResumePrompt(data: ResumeData): string {
+  // Sanitize data to reduce tokens (remove photo, design, metadata)
+  // This helps prevent reaching TPM (Tokens Per Minute) limits
+  const sanitizedData = sanitizeResumeDataForPrompt(data);
+
   return `
 You are an elite resume strategist and former Google recruiter with 30+ years of experience. Your goal is to transform the user's raw input into a top 1% resume that triggers Applicant Tracking System (ATS) algorithms and captivates hiring managers.
 
@@ -87,8 +114,47 @@ Critical ATS Requirements:
 PROVIDE THE RESPONSE IN MARKDOWN FORMAT with clear "## Section" headers.
 
 Candidate Data:
-${JSON.stringify(data, null, 2)}
+${JSON.stringify(sanitizedData, null, 2)}
 `;
+}
+
+/**
+ * Strips unnecessary fields from resume data to reduce token count for AI prompts
+ * This prevents reaching TPM limits and lowers latency
+ */
+function sanitizeResumeDataForPrompt(data: ResumeData): any {
+  // Deep clone to avoid mutating original
+  const clone = JSON.parse(JSON.stringify(data));
+
+  // Remove photo (large base64/data URL), design (bloated config), and technical metadata
+  if (clone.personalInfo) {
+    delete clone.personalInfo.photo;
+  }
+
+  delete clone.design;
+  delete clone.selectedSections;
+  delete clone.hiddenSections;
+  delete clone.sectionLabels;
+
+  // Clean up entries to keep only content-relevant fields
+  const cleanEntries = (entries: any[]) => {
+    if (!Array.isArray(entries)) return [];
+    return entries.map(entry => {
+      const { id, visible, ...rest } = entry;
+      return rest;
+    });
+  };
+
+  if (clone.experience) clone.experience = cleanEntries(clone.experience);
+  if (clone.education) clone.education = cleanEntries(clone.education);
+  if (clone.skills) clone.skills = cleanEntries(clone.skills);
+  if (clone.softSkills) clone.softSkills = cleanEntries(clone.softSkills);
+  if (clone.certificates) clone.certificates = cleanEntries(clone.certificates);
+  if (clone.projects) clone.projects = cleanEntries(clone.projects);
+  if (clone.awards) clone.awards = cleanEntries(clone.awards);
+  if (clone.publications) clone.publications = cleanEntries(clone.publications);
+
+  return clone;
 }
 
 function calculateBasicATSScore(data: ResumeData, content: string): number {
@@ -99,16 +165,22 @@ function calculateBasicATSScore(data: ResumeData, content: string): number {
 }
 
 function extractKeywords(text: string): string[] {
-  const common = new Set(['the','a','an','and','or','but','in','on','at','to','for','of','with','by','is','are','was','were','be','been','have','has','had','do','does','did','will','would','could','should','may','might','must','can']);
-  return [...new Set(text.replace(/[^\w\s]/g,' ').split(/\s+/).filter(w=>w.length>2&&!common.has(w)&&!/^\d+$/.test(w)))];
+  const common = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can']);
+  return [...new Set(text.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 2 && !common.has(w) && !/^\d+$/.test(w)))];
 }
 
 export async function optimizeResumeForATS(resumeData: ResumeData, missingKeywords: string[]): Promise<string> {
-  if (!config.ai.apiKey) throw new Error('GROQ_API_KEY is not configured');
+  const groq = getGroqClient();
 
-  const prompt = `Optimize this resume to naturally include these ATS keywords: ${missingKeywords.join(', ')}\n\nResume:\n${JSON.stringify(resumeData, null, 2)}\n\nReturn optimized content as clean text.`;
+  const sanitizedData = sanitizeResumeDataForPrompt(resumeData);
+  const prompt = `Optimize this resume to naturally include these ATS keywords: ${missingKeywords.join(', ')}\n\nResume:\n${JSON.stringify(sanitizedData, null, 2)}\n\nReturn optimized content as clean text.`;
 
-  const modelsToTry = ['llama-3.1-8b-instant', 'llama-3.1-70b-versatile', 'gemma2-9b-it', 'mixtral-8x7b-32768'];
+  const modelsToTry = [
+    'llama-3.3-70b-versatile',
+    'llama-3.1-70b-versatile',
+    'llama-3.1-8b-instant'
+  ];
+  let lastError: any = null;
   for (const model of modelsToTry) {
     try {
       const completion = await groq.chat.completions.create({
@@ -121,11 +193,13 @@ export async function optimizeResumeForATS(resumeData: ResumeData, missingKeywor
         temperature: 0.5,
       });
       return completion.choices[0]?.message?.content || '';
-    } catch (error: unknown) {
-      const msg = (error as Error)?.message || '';
-      if (msg.includes('decommissioned') || msg.includes('model')) continue;
+    } catch (error: any) {
+      lastError = error;
+      const msg = error?.message || '';
+      console.error(`Groq error with model ${model}:`, msg);
+      if (msg.includes('decommissioned') || msg.includes('model') || msg.includes('not found') || msg.includes('limit') || msg.includes('rate')) continue;
       throw error;
     }
   }
-  throw new Error('Failed to optimize resume.');
+  throw new Error(`Failed to optimize resume. Last error: ${lastError?.message || 'All models unavailable'}`);
 }

@@ -8,9 +8,16 @@ export interface PersonalInfo {
   phone: string;
   location: string;
   linkedIn?: string;
+  github?: string;
   website?: string;
+  photo?: string;
   summary: string;
   yearsOfExperience?: number;
+  nationality?: string;
+  dateOfBirth?: string;
+  visa?: string;
+  passport?: string;
+  gender?: string;
 }
 
 export interface Experience {
@@ -22,6 +29,7 @@ export interface Experience {
   current: boolean;
   description: string;
   achievements: string[];
+  visible?: boolean;
 }
 
 export interface Education {
@@ -32,12 +40,14 @@ export interface Education {
   startYear: string;
   endYear: string;
   gpa?: string;
+  visible?: boolean;
 }
 
 export interface Skill {
   id: string;
   name: string;
   level?: 'beginner' | 'intermediate' | 'advanced' | 'expert';
+  visible?: boolean;
 }
 
 export interface JobTarget {
@@ -54,12 +64,14 @@ export interface Certificate {
   expiryDate?: string;
   certificateId?: string;
   url?: string;
+  visible?: boolean;
 }
 
 export interface Interest {
   id: string;
   name: string;
   description?: string;
+  visible?: boolean;
 }
 
 export interface Project {
@@ -71,6 +83,7 @@ export interface Project {
   endDate: string;
   description?: string;
   link?: string;
+  visible?: boolean;
 }
 
 export interface Course {
@@ -79,6 +92,7 @@ export interface Course {
   provider?: string;
   completionDate: string;
   description?: string;
+  visible?: boolean;
 }
 
 export interface Award {
@@ -88,6 +102,7 @@ export interface Award {
   date: string;
   description?: string;
   url?: string;
+  visible?: boolean;
 }
 
 export interface Organisation {
@@ -97,6 +112,7 @@ export interface Organisation {
   startDate: string;
   endDate: string;
   description?: string;
+  visible?: boolean;
 }
 
 export interface Publication {
@@ -107,6 +123,7 @@ export interface Publication {
   publisher?: string;
   url?: string;
   description?: string;
+  visible?: boolean;
 }
 
 export interface Reference {
@@ -116,12 +133,14 @@ export interface Reference {
   company?: string;
   email?: string;
   phone?: string;
+  visible?: boolean;
 }
 
 export interface Language {
   id: string;
   name: string;
   level: 'native' | 'fluent' | 'intermediate' | 'basic';
+  visible?: boolean;
 }
 
 export interface Declaration {
@@ -129,6 +148,7 @@ export interface Declaration {
   place?: string;
   date?: string;
   signature?: string;
+  visible?: boolean;
 }
 
 export interface CustomSection {
@@ -137,6 +157,7 @@ export interface CustomSection {
 }
 
 export interface ResumeDesign {
+  templateId?: string;
   languageRegion: {
     language: string;
     dateFormat: string;
@@ -206,6 +227,8 @@ export interface ResumeDesign {
     showPhoto: boolean;
     photoSize: number;
     photoFormat: 'circle' | 'rounded' | 'square';
+    banner?: boolean;
+    bannerTextColor?: string;
   };
   sectionSettings: {
     skills: 'grid' | 'level' | 'compact' | 'bubble';
@@ -243,6 +266,9 @@ export interface ResumeData {
   declaration?: Declaration;
   custom?: CustomSection;
   design: ResumeDesign;
+  selectedSections?: string[]; // Sections enabled/added by user
+  hiddenSections?: string[]; // Sections hidden from PDF but still in the list
+  sectionLabels?: Record<string, string>;
 }
 
 export interface ATSAnalysis {

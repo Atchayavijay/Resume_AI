@@ -27,11 +27,26 @@ export const ResumePage = React.forwardRef<HTMLDivElement, ResumePageProps>(({
     return (
         <div
             ref={ref}
-            className={cn("bg-white shadow-xl relative transition-transform origin-top mx-auto mb-8", className)}
+            className={cn(
+                "resume-page shadow-xl relative transition-transform origin-top mx-auto bg-white overflow-hidden",
+                className
+            )}
             style={{
-                width,
-                height,
+                width: width,
+                height: height,
+                minHeight: height,
+                paddingTop: 'var(--resume-margin-tb)',
+                paddingBottom: 'calc(var(--resume-margin-tb) + 20px + 10px)', // Synced with pagination buffer (20px gap + 10px safety)
+                paddingLeft: 'var(--resume-margin-lr)',
+                paddingRight: 'var(--resume-margin-lr)',
+                boxSizing: 'border-box',
+                display: 'flex',
+                flexDirection: 'column',
                 transform: `scale(${scale})`,
+                pageBreakAfter: 'always',
+                breakAfter: 'page',
+                background: 'white',
+                overflow: 'hidden',
                 ...style
             }}
             {...props}
@@ -41,7 +56,7 @@ export const ResumePage = React.forwardRef<HTMLDivElement, ResumePageProps>(({
                 {children}
 
                 {/* Page Footer / Number */}
-                <div className="absolute bottom-4 right-8 text-[10px] text-slate-300 pointer-events-none print:hidden">
+                <div className="absolute bottom-4 right-8 text-[10px] text-slate-300 pointer-events-none hidden">
                     Page {pageNumber} of {totalNumbers}
                 </div>
             </div>

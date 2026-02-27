@@ -53,24 +53,32 @@ export function analyzeATSCompatibility(
 function buildFullResumeContent(resumeContent: string, resumeData: ResumeData): string {
   const parts = [resumeContent];
 
-  resumeData.experience?.forEach(exp => {
-    parts.push(exp.position, exp.company, exp.description);
-    parts.push(...exp.achievements);
+  resumeData.experience?.forEach((exp: any) => {
+    if (exp) {
+      parts.push(exp.position || '', exp.company || '', exp.description || '');
+      if (Array.isArray(exp.achievements)) {
+        parts.push(...exp.achievements);
+      }
+    }
   });
 
-  resumeData.education?.forEach(edu => {
-    parts.push(edu.degree, edu.field, edu.institution);
+  resumeData.education?.forEach((edu: any) => {
+    if (edu) {
+      parts.push(edu.degree || '', edu.field || '', edu.institution || '');
+    }
   });
 
-  resumeData.skills?.forEach(skill => {
-    parts.push(skill.name);
+  resumeData.skills?.forEach((skill: any) => {
+    if (skill && skill.name) {
+      parts.push(skill.name);
+    }
   });
 
   if (resumeData.personalInfo) {
     parts.push(resumeData.personalInfo.summary || '');
   }
 
-  return parts.filter(part => part && part.length > 0).join(' ');
+  return parts.filter(part => part && typeof part === 'string' && part.length > 0).join(' ');
 }
 
 function calculateBaseScore(

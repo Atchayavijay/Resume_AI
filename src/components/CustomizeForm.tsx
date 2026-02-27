@@ -31,12 +31,14 @@ import { ResumeDesign, ResumeData } from '@/lib/types';
 import { DEFAULT_DESIGN } from '@/lib/defaults';
 import { TEMPLATES, type Template } from '@/lib/templates';
 
+import { useResumeStore } from '@/store/useResumeStore';
+
 interface CustomizeFormProps {
-    data: ResumeData;
-    onChange: (data: ResumeData) => void;
+    // data and onChange removed to use Zustand store
 }
 
-const CustomizeForm: React.FC<CustomizeFormProps> = ({ data, onChange }) => {
+const CustomizeForm: React.FC<CustomizeFormProps> = () => {
+    const { data, setResumeData: onChange, updateDesign: storeUpdateDesign } = useResumeStore();
     const design = data.design || DEFAULT_DESIGN;
     const [activeTab, setActiveTab] = useState('layout');
 
@@ -48,7 +50,7 @@ const CustomizeForm: React.FC<CustomizeFormProps> = ({ data, onChange }) => {
                 [subField]: value
             }
         };
-        onChange({ ...data, design: newDesign });
+        storeUpdateDesign(newDesign);
     };
 
     const updateSubDesign = (section: keyof ResumeDesign, subSection: string, field: string, value: any) => {
@@ -62,17 +64,17 @@ const CustomizeForm: React.FC<CustomizeFormProps> = ({ data, onChange }) => {
                 }
             }
         };
-        onChange({ ...data, design: newDesign });
+        storeUpdateDesign(newDesign);
     };
 
     const resetToDefault = () => {
         if (confirm('Reset all design customizations to default?')) {
-            onChange({ ...data, design: DEFAULT_DESIGN });
+            storeUpdateDesign(DEFAULT_DESIGN);
         }
     };
 
     const applyTemplate = (template: Template) => {
-        onChange({ ...data, design: template.design });
+        storeUpdateDesign(template.design);
     };
 
     const TemplateThumbnail = ({ template, isActive }: { template: Template; isActive: boolean }) => {
@@ -452,6 +454,7 @@ const CustomizeForm: React.FC<CustomizeFormProps> = ({ data, onChange }) => {
                                         <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Accent Color</Label>
                                         <div className="flex flex-wrap gap-3">
                                             {[
+                                                '#1e3a8a', // navy
                                                 '#3b82f6', // blue
                                                 '#10b981', // emerald
                                                 '#f59e0b', // amber
@@ -459,7 +462,6 @@ const CustomizeForm: React.FC<CustomizeFormProps> = ({ data, onChange }) => {
                                                 '#8b5cf6', // violet
                                                 '#ec4899', // pink
                                                 '#0f172a', // slate-900
-                                                '#64748b', // slate-500
                                             ].map((color) => (
                                                 <motion.button
                                                     key={color}
@@ -561,11 +563,11 @@ const CustomizeForm: React.FC<CustomizeFormProps> = ({ data, onChange }) => {
                                     <div className="space-y-4 pt-2">
                                         <div className="flex justify-between items-center">
                                             <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Utility Opacity</Label>
-                                            <span className="text-xs font-bold text-primary">{design.advanced.dateLocationOpacity}</span>
+                                            <span className="text-xs font-bold text-primary">{design.advanced?.dateLocationOpacity ?? 0.8}</span>
                                         </div>
                                         <input
                                             type="range" min="0.3" max="1.0" step="0.1"
-                                            value={design.advanced.dateLocationOpacity}
+                                            value={design.advanced?.dateLocationOpacity ?? 0.8}
                                             onChange={(e) => updateDesign('advanced', 'dateLocationOpacity', parseFloat(e.target.value))}
                                             className="w-full accent-primary h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                                         />

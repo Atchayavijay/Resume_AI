@@ -50,6 +50,21 @@ export const COLOR_PALETTES: Record<string, ColorPalette> = {
     text: '#111827',
     background: '#ffffff',
   },
+  sapphireDeep: {
+    accent: '#1e293b', // slate-800 as dark blue replacement
+    text: '#0f172a',
+    background: '#ffffff',
+  },
+  jaganrajBlue: {
+    accent: '#3b82f6',
+    text: '#1f2937',
+    background: '#ffffff',
+  },
+  eliteNavy: {
+    accent: '#1e3a8a', // Deep Navy Blue
+    text: '#1f2937',
+    background: '#ffffff',
+  },
 };
 
 // --- Layout Presets ---
@@ -120,6 +135,10 @@ export const TYPOGRAPHY_PRESETS: Record<string, TypographyPreset> = {
     fontFamily: 'EB Garamond',
     headings: { style: 'classic', capitalization: 'capitalize', size: 'l', icons: 'none' },
   },
+  interBannerUppercase: {
+    fontFamily: 'Inter',
+    headings: { style: 'banner', capitalization: 'uppercase', size: 'm', icons: 'none' },
+  },
 };
 
 // --- Per-Template Spec ---
@@ -139,6 +158,48 @@ export interface TemplateSpec {
 }
 
 export const TEMPLATE_SPECS: TemplateSpec[] = [
+  {
+    id: 'jaganraj',
+    name: 'jaganraj',
+    description: 'Professional blue design with modern typography and spacious layout',
+    persona: 'modern',
+    layoutPreset: 'oneColumnTop',
+    colorPalette: 'jaganrajBlue',
+    typographyPreset: 'interUppercase',
+    overrides: {
+      spacing: {
+        entrySpacing: 12,
+        marginTB: 24,
+      },
+      personalDetails: {
+        align: 'left',
+        arrangement: 'icon',
+        iconStyle: 'circle-filled',
+        nameSize: 'xl',
+        nameBold: true,
+      },
+      advanced: {
+        dateLocationOpacity: 0.8,
+      },
+      typography: {
+        headings: {
+          style: 'classic',
+          capitalization: 'uppercase',
+          size: 'm',
+          icons: 'none'
+        }
+      },
+      sectionSettings: {
+        skills: 'grid',
+        workExperience: {
+          order: 'title-employer',
+        },
+        education: {
+          order: 'school-degree',
+        }
+      }
+    },
+  },
   {
     id: 'classic',
     name: 'Classic',
@@ -248,6 +309,56 @@ export const TEMPLATE_SPECS: TemplateSpec[] = [
         indentBody: false,
         listStyle: 'hyphen',
       },
+    },
+  },
+  {
+    id: 'executive',
+    name: 'Executive',
+    description: 'Sophisticated layout with modern typography',
+    persona: 'corporate',
+    layoutPreset: 'twoColumnLeft',
+    colorPalette: 'minimalSlate',
+    typographyPreset: 'poppinsCapitalize',
+    overrides: {
+      personalDetails: {
+        align: 'left',
+        arrangement: 'pipe',
+        iconStyle: 'circle-outline',
+        nameSize: 'l',
+      },
+      sectionSettings: {
+        skills: 'level',
+      }
+    },
+  },
+  {
+    id: 'elite-navy',
+    name: 'Elite Navy Blue',
+    description: 'Premium corporate design with a full-width navy banner and professional section bars.',
+    persona: 'corporate',
+    layoutPreset: 'oneColumnTop',
+    colorPalette: 'eliteNavy',
+    typographyPreset: 'interBannerUppercase',
+    overrides: {
+      colors: {
+        accent: '#1e3a8a', // Explicit Navy Blue
+      },
+      personalDetails: {
+        align: 'left',
+        showPhoto: true,
+        photoFormat: 'circle',
+        photoSize: 110,
+        banner: true,
+        nameSize: 'xl',
+        nameBold: true,
+      },
+      spacing: {
+        entrySpacing: 16,
+        marginTB: 24,
+      },
+      sectionSettings: {
+        skills: 'compact',
+      }
     },
   },
 ];

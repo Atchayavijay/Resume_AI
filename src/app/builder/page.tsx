@@ -5,7 +5,7 @@
  * Two-column layout with form on left and preview/analysis on right
  */
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,19 +15,25 @@ import {
   Download,
   BarChart3,
   Settings,
-  Save,
   Eye,
+  Save,
   Menu,
   X,
   Palette,
-  LogOut
+  LogOut,
+  LayoutGrid,
+  ChevronDown,
+  MoreVertical,
+  Briefcase,
+  Columns2,
+  Type
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import ResumeForm from '@/components/ResumeForm';
-import ResumePreview from '@/components/ResumePreview';
+import ResumePreview, { ResumePreviewHandle } from '@/components/ResumePreview';
 import AIResumeChecker from '@/components/AIResumeChecker';
 import FeatureShowcase from '@/components/FeatureShowcase';
 import ExportButtons from '@/components/ExportButtons';
@@ -35,10 +41,11 @@ import ChangesVisualization from '@/components/ChangesVisualization';
 import AddSectionsModal from '@/components/AddSectionsModal';
 import BottomDockPanel from '@/components/BottomDockPanel';
 import CustomizeForm from '@/components/CustomizeForm';
+import { toast } from 'sonner';
 import '@/components/bottom-dock-panel.css';
 
 import type { ResumeData } from '@/lib/types';
-import { loadResumeData, saveResumeData, clearResumeData, loadResumeDataFromDB, saveResumeDataToDB } from '@/lib/utils';
+import { loadResumeData, saveResumeData, clearResumeData, loadResumeDataFromDB, saveResumeDataToDB, cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { trackResumeChanges, type ChangesSummary } from '@/lib/change-tracker';
 import { DEFAULT_DESIGN } from '@/lib/defaults';
@@ -46,109 +53,123 @@ import { getTemplateById } from '@/lib/templates';
 import atsOptimizedResume from '@/lib/seed/atsOptimizedResume';
 import lastAIResponseResume from '@/lib/seed/lastAIResponseResume';
 
+import { useResumeStore } from '@/store/useResumeStore';
+
 function BuilderPageContent() {
   const searchParams = useSearchParams();
   const [previewVisible] = useState(true);
-  // State management
-  const [dockOpen, setDockOpen] = useState(false);
-  const [resumeData, setResumeData] = useState<ResumeData>({
-    personalInfo: {
-      fullName: '',
-      email: '',
-      phone: '',
-      location: '',
-      linkedIn: '',
-      website: '',
-      summary: '',
-      yearsOfExperience: 0
-    },
-    experience: [],
-    education: [],
-    skills: [],
-    softSkills: [],
-    jobTitle: '',
-    jobDescription: '',
-    jobTarget: {
-      position: '',
-      company: '',
-      description: ''
-    },
-    certificates: [],
-    interests: [],
-    projects: [],
-    courses: [],
-    awards: [],
-    organisations: [],
-    publications: [],
-    references: [],
-    languages: [],
-    declaration: {
-      statement: '',
-      place: '',
-      date: '',
-      signature: ''
-    },
-    custom: {
-      title: '',
-      content: ''
-    },
-    design: DEFAULT_DESIGN
-  });
 
+  // Zustand store
+  const {
+    data: resumeData,
+    setResumeData,
+    updateDesign,
+    isInitialLoad,
+    setInitialLoad,
+    setSelectedSections: setStoreSelectedSections
+  } = useResumeStore();
+
+  const selectedSections = resumeData.selectedSections || ['personalInfo', 'summary', 'experience', 'education', 'skills'];
+  const setSelectedSections = setStoreSelectedSections;
+
+  const [dockOpen, setDockOpen] = useState(false);
   const router = useRouter();
   const { user, logout } = useAuth();
   const [generatedContent, setGeneratedContent] = useState<string>('');
-  // Separate AI preview data so manual form isn't overwritten until user accepts
   const [aiPreviewData, setAiPreviewData] = useState<ResumeData | null>(null);
   const [currentView, setCurrentView] = useState<'preview' | 'aiPreview' | 'ats' | 'export' | 'changes' | 'customize'>('preview');
-  const [analysisMode, setAnalysisMode] = useState<'manual' | 'ai'>('manual'); // Track which content to analyze
+  const [analysisMode, setAnalysisMode] = useState<'manual' | 'ai'>('manual');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [autoSave, setAutoSave] = useState(true);
   const [viewMode, setViewMode] = useState<'split' | 'info' | 'preview'>('split');
   const [changesSummary, setChangesSummary] = useState<ChangesSummary | null>(null);
+  const [isSaved, setIsSaved] = useState(true);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const resumePreviewRef = useRef<ResumePreviewHandle>(null);
+
+  const handleNavbarDownload = useCallback(async () => {
+    if (resumePreviewRef.current) {
+      setIsDownloading(true);
+      try {
+        await resumePreviewRef.current.handleDownloadPDF();
+      } finally {
+        setIsDownloading(false);
+      }
+    }
+  }, []);
+
+  const handleAIGenerate = async () => {
+    if (!resumeData.personalInfo.fullName) {
+      alert('Please fill in your name first');
+      return;
+    }
+
+    // Save current state first
+    saveResumeData(resumeData);
+    saveResumeDataToDB(resumeData).catch(console.error);
+
+    // Redirect to the AI Generation (Target Job & Prompts) module
+    router.push('/generate');
+  };
 
   // Modal state
   const [addSectionsModalOpen, setAddSectionsModalOpen] = useState(false);
-  const [selectedSections, setSelectedSections] = useState<string[]>(['personalInfo', 'summary', 'experience', 'education', 'skills']);
 
   // Load saved data on mount
+  // Track what we've already loaded to prevented recursive loops or accidental overwrites
+  const lastLoadedRef = useRef<string | null>(null);
+
+  // Load saved data on mount or when params change
   useEffect(() => {
+    const urlParams = searchParams.toString();
+
+    // If we've already loaded this exact URL and we're not in "initial load" mode, skip
+    if (!isInitialLoad && lastLoadedRef.current === urlParams) return;
+
     const loadData = async () => {
+      const resumeId = searchParams.get('id');
       const templateId = searchParams.get('template');
       const template = templateId ? getTemplateById(templateId) : undefined;
-      const applyDesign = (data: ResumeData) => ({
-        ...data,
-        design: template ? template.design : (data.design || DEFAULT_DESIGN)
-      });
+
+      const applyDesign = (data: ResumeData) => {
+        const design = template ? { ...template.design } : { ...(data.design || DEFAULT_DESIGN) };
+
+        // Auto-migration: If margins are at the old wide defaults, tighten them
+        if (design.spacing.marginLR === 21) design.spacing.marginLR = 14;
+        if (design.spacing.marginTB === 21) design.spacing.marginTB = 18;
+
+        return {
+          ...data,
+          design
+        };
+      };
 
       // Try loading from MongoDB first
-      const dbData = await loadResumeDataFromDB();
+      const dbData = await loadResumeDataFromDB(templateId || undefined, resumeId || undefined);
       if (dbData) {
         setResumeData(applyDesign(dbData));
-        return;
-      }
-      
-      // Fallback to localStorage
-      const savedData = loadResumeData();
-      if (savedData) {
-        setResumeData(applyDesign(savedData));
-        saveResumeDataToDB(applyDesign(savedData)).catch(console.error);
-        return;
+      } else if (template) {
+        // No saved resume: apply template design to default state
+        updateDesign(template.design);
       }
 
-      // No saved resume: apply template design to default state
-      if (template) {
-        setResumeData((prev) => ({
-          ...prev,
-          design: template.design
-        }));
-      }
+      lastLoadedRef.current = urlParams;
+      setInitialLoad(false);
     };
-    
-    loadData();
-  }, [searchParams]);
 
-  // Generate comprehensive resume content for analysis
+    loadData();
+  }, [searchParams, isInitialLoad, setResumeData, updateDesign, setInitialLoad]);
+
+  // Reset isInitialLoad when leaving the builder to ensure next visit re-triggers load
+  useEffect(() => {
+    return () => {
+      setInitialLoad(true);
+      lastLoadedRef.current = null;
+    };
+  }, [setInitialLoad]);
+
+  // Comprehensive resume content for analysis
   const generateFullResumeContent = (data: ResumeData): string => {
     const content = [];
 
@@ -233,25 +254,20 @@ function BuilderPageContent() {
   useEffect(() => {
     if (autoSave && resumeData.personalInfo.fullName) {
       const timeoutId = setTimeout(() => {
-        saveResumeData(resumeData);
+        // Include selectedSections in auto-save
+        const dataToSave = { ...resumeData, selectedSections };
+        saveResumeData(dataToSave);
+        saveResumeDataToDB(dataToSave).catch(console.error);
       }, 2000);
 
       return () => clearTimeout(timeoutId);
     }
-  }, [resumeData, autoSave]);
-
-  const handleGenerateContent = () => {
-    if (!resumeData.personalInfo.fullName) {
-      alert('Please fill in your name first');
-      return;
-    }
-
-    saveResumeData(resumeData);
-    router.push('/generate');
-  };
+  }, [resumeData, autoSave]); // Simplified dependencies since selectedSections is now part of resumeData
 
   const handleSave = () => {
     saveResumeData(resumeData);
+    saveResumeDataToDB(resumeData).catch(console.error);
+    setIsSaved(true);
     const button = document.getElementById('save-button');
     if (button) {
       button.textContent = 'Saved!';
@@ -261,9 +277,22 @@ function BuilderPageContent() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.push('/');
+      router.refresh();
+      toast.success('Logged out successfully');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      toast.error('Logout failed');
+    }
+  };
+
   const handleClear = () => {
     if (confirm('Are you sure you want to clear all data? This action cannot be undone.')) {
-      clearResumeData();
+      const templateId = searchParams.get('template');
+      clearResumeData(templateId || undefined);
       setResumeData({
         personalInfo: {
           fullName: '',
@@ -293,24 +322,32 @@ function BuilderPageContent() {
 
   const handleAddSection = (sectionId: string) => {
     if (!selectedSections.includes(sectionId) && sectionId !== 'personalInfo') {
-      setSelectedSections([...selectedSections, sectionId]);
+      const newSections = [...selectedSections, sectionId];
+      setSelectedSections(newSections);
+      // Save to resume data
+      setResumeData({ ...resumeData, selectedSections: newSections });
     }
   };
 
   const handleRemoveSection = (sectionId: string) => {
     if (sectionId !== 'personalInfo') {
-      setSelectedSections(selectedSections.filter(id => id !== sectionId));
+      const newSections = selectedSections.filter(id => id !== sectionId);
+      setSelectedSections(newSections);
+      // Save to resume data
+      setResumeData({ ...resumeData, selectedSections: newSections });
     }
   };
 
   const handleToggleSection = (sectionId: string) => {
     if (sectionId === 'personalInfo') return;
 
+    let newSections: string[];
     if (selectedSections.includes(sectionId)) {
-      setSelectedSections(selectedSections.filter(id => id !== sectionId));
+      newSections = selectedSections.filter(id => id !== sectionId);
     } else {
-      setSelectedSections([...selectedSections, sectionId]);
+      newSections = [...selectedSections, sectionId];
     }
+    setSelectedSections(newSections);
   };
 
   return (
@@ -387,207 +424,212 @@ function BuilderPageContent() {
             )}
           </Button>
 
-          <Button
-            variant={currentView === 'export' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setCurrentView('export')}
-            className={`flex flex-col items-center justify-center shrink-0 h-20 w-32 rounded-2xl font-semibold text-base transition-all duration-300 shadow-sm ${currentView === 'export' ? 'bg-gradient-to-r from-sky-400 to-indigo-400 text-white shadow-xl ring-2 ring-indigo-400 transform scale-105' : 'bg-white/0 text-foreground hover:bg-white/30 hover:scale-102'}`}
-          >
-            <Download className="h-5 w-5 mb-1" />
-            <span className="text-[11px] font-bold uppercase tracking-tight">Export</span>
-          </Button>
+
         </div>
       </BottomDockPanel>
 
       <header className="sticky top-0 z-50 w-full glass-card border-b border-white/20">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex h-20 items-center justify-between">
-            <motion.div
-              className="flex items-center space-x-4"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6 }}
-            >
-              <Link href="/" className="flex items-center space-x-4 hover:opacity-90 transition-opacity">
-                <div className="relative">
-                  <div className="gradient-primary p-3 rounded-2xl shadow-lg">
-                    <FileText className="h-7 w-7 text-white" />
-                  </div>
-                  <div className="absolute -top-1 -right-1 w-4 h-4 gradient-accent rounded-full pulse-glow" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold gradient-text">
-                    Resume AI Builder
-                  </h1>
-                  <p className="text-sm text-muted-foreground font-medium">
-                    Professional • ATS-Optimized • AI-Powered
-                  </p>
-                </div>
+          <div className="flex h-16 items-center justify-between w-full">
+            {/* Left Side: Overview */}
+            <div className="flex items-center">
+              <Link href="/dashboard">
+                <Button variant="ghost" className="rounded-xl flex items-center gap-2 text-slate-600 hover:text-slate-900 font-medium px-4 h-11 border border-slate-100/50 hover:bg-slate-50 shadow-sm">
+                  <LayoutGrid size={18} className="text-slate-400" />
+                  <span className="hidden md:inline">Overview</span>
+                </Button>
               </Link>
-            </motion.div>
+            </div>
 
-            <motion.div
-              className="flex items-center space-x-2 glass-card p-2 rounded-2xl"
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-            >
+            {/* Center Navigation: Content, Customize, AI Tools */}
+            <div className="flex items-center space-x-1.5 bg-slate-100/40 p-1.5 rounded-2xl border border-slate-200/40">
               <Button
-                variant={viewMode === 'split' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('split')}
-                className="rounded-xl"
-              >
-                Split View
-              </Button>
-              <Button
-                variant={viewMode === 'info' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('info')}
-                className="rounded-xl"
-              >
-                Info Only
-              </Button>
-              <Button
-                variant={viewMode === 'preview' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('preview')}
-                className="rounded-xl"
-              >
-                Preview Only
-              </Button>
-            </motion.div>
-
-            <motion.div
-              className="flex items-center space-x-3"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-            >
-              <Button
-                id="save-button"
                 variant="ghost"
                 size="sm"
-                onClick={handleSave}
-                className="glass-button rounded-xl text-foreground hover:text-primary"
+                onClick={() => setCurrentView('preview')}
+                className={cn(
+                  "flex items-center gap-2 px-6 h-11 rounded-xl font-bold transition-all",
+                  currentView === 'preview'
+                    ? "bg-white text-orange-500 shadow-sm ring-1 ring-orange-100"
+                    : "text-slate-500 hover:text-slate-900 hover:bg-white/50"
+                )}
               >
-                <Save className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Save</span>
-              </Button>
-
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleGenerateContent}
-                className="gradient-primary hover:shadow-xl rounded-full btn-hover-lift text-white font-bold px-8 shadow-orange-200/50"
-              >
-                <Sparkles className="h-4 w-4 mr-2" />
-                Generate AI
+                <FileText size={18} className={currentView === 'preview' ? "text-orange-500" : "text-orange-400/70"} />
+                <span className="hidden sm:inline">Content</span>
               </Button>
 
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={async () => {
-                  await logout();
-                  router.push('/');
-                  router.refresh();
-                }}
-                className="hidden sm:flex glass-button rounded-xl text-muted-foreground hover:text-foreground"
-                title="Logout"
+                onClick={() => setCurrentView('customize')}
+                className={cn(
+                  "flex items-center gap-2 px-6 h-11 rounded-xl font-bold transition-all",
+                  currentView === 'customize'
+                    ? "bg-white text-slate-800 shadow-sm ring-1 ring-slate-100"
+                    : "text-slate-500 hover:text-slate-900 hover:bg-white/50"
+                )}
               >
-                <LogOut className="h-4 w-4 mr-2" />
-                <span>Logout</span>
+                <Palette size={18} className={currentView === 'customize' ? "text-slate-800" : "text-slate-400"} />
+                <span className="hidden sm:inline">Customize</span>
               </Button>
 
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="md:hidden glass-button rounded-xl"
+                onClick={() => setCurrentView('aiPreview')}
+                className={cn(
+                  "flex items-center gap-2 px-6 h-11 rounded-xl font-bold transition-all",
+                  currentView === 'aiPreview'
+                    ? "bg-white text-indigo-600 shadow-sm ring-1 ring-indigo-100"
+                    : "text-slate-500 hover:text-slate-900 hover:bg-white/50"
+                )}
               >
-                {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+                <Sparkles size={18} className={currentView === 'aiPreview' ? "text-indigo-600" : "text-indigo-400/70"} />
+                <span className="hidden sm:inline">AI Tools</span>
               </Button>
-            </motion.div>
+            </div>
+
+            {/* Right Side: Save, Generate AI, Logout, Download */}
+            <div className="flex items-center gap-3">
+              <div className="hidden lg:flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={handleSave}
+                  className="rounded-xl flex items-center gap-2 text-slate-700 font-semibold px-4 hover:bg-slate-50 border border-slate-100 transition-all"
+                >
+                  <Save size={18} className="text-slate-400" />
+                  <span>Save</span>
+                </Button>
+
+                <Button
+                  variant="default"
+                  onClick={handleAIGenerate}
+                  disabled={isGeneratingAI}
+                  className="bg-gradient-to-r from-[#f97316] via-[#ea580c] to-[#dc2626] hover:scale-105 active:scale-95 text-white font-bold h-11 px-8 rounded-full flex items-center gap-2 shadow-[0_8px_16px_-6px_rgba(234,88,12,0.5)] hover:shadow-[0_12px_24px_-8px_rgba(234,88,12,0.6)] transition-all duration-300 border-none group"
+                >
+                  {isGeneratingAI ? (
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Sparkles size={18} className="text-white group-hover:rotate-12 transition-transform" />
+                  )}
+                  <span className="tracking-tight">Generate AI</span>
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  onClick={handleLogout}
+                  className="rounded-xl flex items-center gap-2 text-slate-700 font-semibold px-4 hover:bg-slate-50 border border-slate-100 transition-all"
+                >
+                  <LogOut size={18} className="text-slate-400" />
+                  <span>Logout</span>
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100/40 rounded-2xl border border-slate-200/40">
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleNavbarDownload}
+                  disabled={isDownloading}
+                  className="bg-[#1e1b4b] hover:bg-[#1a173d] text-white font-bold h-11 px-6 rounded-xl flex items-center gap-2 shadow-lg hover:shadow-xl transition-all"
+                >
+                  {isDownloading ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Downloading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Download</span>
+                      <Download size={18} className="text-white" />
+                    </>
+                  )}
+                </Button>
+
+                <Button variant="ghost" size="icon" className="h-11 w-11 rounded-xl text-slate-400 hover:text-slate-900 hover:bg-white/60">
+                  <MoreVertical size={20} />
+                </Button>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <AnimatePresence>
-          {mobileMenuOpen && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="md:hidden border-t border-white/20 glass-card"
-            >
-              <div className="container mx-auto px-4 py-4">
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { id: 'preview', icon: Eye, label: 'Preview' },
-                    { id: 'ats', icon: BarChart3, label: 'Analysis' },
-                    { id: 'export', icon: Download, label: 'Export' },
-                    { id: 'changes', icon: Settings, label: 'Changes' }
-                  ].map((tab) => (
-                    <Button
-                      key={tab.id}
-                      variant={currentView === tab.id ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => {
-                        setCurrentView(tab.id as typeof currentView);
-                        setMobileMenuOpen(false);
-                      }}
-                      className={`justify-start rounded-xl ${
-                        currentView === tab.id
+          <AnimatePresence>
+            {mobileMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="md:hidden border-t border-white/20 glass-card"
+              >
+                <div className="container mx-auto px-4 py-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { id: 'preview', icon: Eye, label: 'Preview' },
+                      { id: 'ats', icon: BarChart3, label: 'Analysis' },
+                      { id: 'changes', icon: Settings, label: 'Changes' }
+                    ].map((tab) => (
+                      <Button
+                        key={tab.id}
+                        variant={currentView === tab.id ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setCurrentView(tab.id as typeof currentView);
+                          setMobileMenuOpen(false);
+                        }}
+                        className={`justify-start rounded-xl ${currentView === tab.id
                           ? 'gradient-primary text-white'
                           : 'glass-button text-foreground'
-                      }`}
-                    >
-                      <tab.icon className="h-4 w-4 mr-2" />
-                      {tab.label}
-                    </Button>
-                  ))}
-                </div>
+                          }`}
+                      >
+                        <tab.icon className="h-4 w-4 mr-2" />
+                        {tab.label}
+                      </Button>
+                    ))}
+                  </div>
 
-                <div className="mt-4 pt-4 border-t border-white/20 space-y-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setAiPreviewData(atsOptimizedResume);
-                      setGeneratedContent(atsOptimizedResume.personalInfo.summary);
-                      if (resumeData) {
-                        const changes = trackResumeChanges(resumeData, atsOptimizedResume);
-                        setChangesSummary(changes);
-                        if (changes.totalChanges > 0) setCurrentView('changes');
-                      }
-                      setMobileMenuOpen(false);
-                    }}
-                    className="w-full justify-start glass-button rounded-xl"
-                  >
-                    Load ATS Demo
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setAiPreviewData(lastAIResponseResume);
-                      setGeneratedContent(lastAIResponseResume.personalInfo.summary);
-                      if (resumeData) {
-                        const changes = trackResumeChanges(resumeData, lastAIResponseResume);
-                        setChangesSummary(changes);
-                        if (changes.totalChanges > 0) setCurrentView('changes');
-                      }
-                      setMobileMenuOpen(false);
-                    }}
-                    className="w-full justify-start glass-button rounded-xl"
-                  >
-                    Load Last AI Response
-                  </Button>
+                  <div className="mt-4 pt-4 border-t border-white/20 space-y-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const dataWithCurrentDesign = { ...atsOptimizedResume, design: resumeData.design };
+                        setAiPreviewData(dataWithCurrentDesign);
+                        setGeneratedContent(atsOptimizedResume.personalInfo.summary);
+                        if (resumeData) {
+                          const changes = trackResumeChanges(resumeData, dataWithCurrentDesign);
+                          setChangesSummary(changes);
+                          if (changes.totalChanges > 0) setCurrentView('changes');
+                        }
+                        setMobileMenuOpen(false);
+                      }}
+                      className="w-full justify-start glass-button rounded-xl"
+                    >
+                      Load ATS Demo
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const dataWithCurrentDesign = { ...lastAIResponseResume, design: resumeData.design };
+                        setAiPreviewData(dataWithCurrentDesign);
+                        setGeneratedContent(lastAIResponseResume.personalInfo.summary);
+                        if (resumeData) {
+                          const changes = trackResumeChanges(resumeData, dataWithCurrentDesign);
+                          setChangesSummary(changes);
+                          if (changes.totalChanges > 0) setCurrentView('changes');
+                        }
+                        setMobileMenuOpen(false);
+                      }}
+                      className="w-full justify-start glass-button rounded-xl"
+                    >
+                      Load Last AI Response
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </header>
 
       <main id="main-content" className="w-full px-0 py-4">
@@ -614,14 +656,9 @@ function BuilderPageContent() {
                   </CardHeader>
                   <CardContent className="max-h-[calc(100vh-160px)] overflow-y-auto">
                     {currentView === 'customize' ? (
-                      <CustomizeForm
-                        data={resumeData}
-                        onChange={setResumeData}
-                      />
+                      <CustomizeForm />
                     ) : (
                       <ResumeForm
-                        data={resumeData}
-                        onChange={setResumeData}
                         selectedSections={selectedSections}
                         onOpenSectionsModal={() => setAddSectionsModalOpen(true)}
                         onSectionsOrderChange={setSelectedSections}
@@ -652,11 +689,15 @@ function BuilderPageContent() {
                           className="flex justify-center items-start w-full min-h-[297mm]"
                         >
                           <ResumePreview
+                            ref={resumePreviewRef}
                             data={resumeData}
                             selectedSections={selectedSections}
                             generatedContent={generatedContent}
                             className="a4-resume-content"
                             onToggleSection={handleToggleSection}
+                            isSaved={isSaved}
+                            viewMode={viewMode}
+                            onViewModeChange={setViewMode}
                           />
                         </motion.div>
                       )}
@@ -679,7 +720,7 @@ function BuilderPageContent() {
                                     variant="outline"
                                     onClick={() => {
                                       if (aiPreviewData) {
-                                        setResumeData(aiPreviewData);
+                                        setResumeData({ ...aiPreviewData, design: resumeData.design });
                                         setAiPreviewData(null);
                                         const changes = trackResumeChanges(resumeData, aiPreviewData);
                                         setChangesSummary(changes);
@@ -821,7 +862,45 @@ function BuilderPageContent() {
           </div>
         )}
         {viewMode === 'info' && (
-          <div className="w-full">
+          <div className="w-full px-4">
+            <div className="flex justify-center mb-6">
+              <div className="flex items-center gap-1 bg-white/80 backdrop-blur-sm p-1.5 rounded-2xl shadow-lg border border-white/20">
+                <Button
+                  variant={viewMode === 'info' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className={cn(
+                    "h-10 px-6 rounded-xl text-xs font-bold uppercase tracking-tight gap-2 transition-all",
+                    viewMode === 'info' ? "bg-white shadow-md ring-1 ring-slate-200 text-orange-500" : "text-slate-500"
+                  )}
+                  onClick={() => setViewMode('info')}
+                >
+                  <Type className="h-4 w-4" />
+                  <span>Content</span>
+                </Button>
+                <Button
+                  variant={viewMode === 'split' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className={cn(
+                    "h-10 px-6 rounded-xl text-xs font-bold uppercase tracking-tight gap-2 transition-all text-slate-500"
+                  )}
+                  onClick={() => setViewMode('split')}
+                >
+                  <Columns2 className="h-4 w-4" />
+                  <span>Split View</span>
+                </Button>
+                <Button
+                  variant={viewMode === 'preview' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className={cn(
+                    "h-10 px-6 rounded-xl text-xs font-bold uppercase tracking-tight gap-2 transition-all text-slate-500"
+                  )}
+                  onClick={() => setViewMode('preview')}
+                >
+                  <Eye className="h-4 w-4" />
+                  <span>Preview</span>
+                </Button>
+              </div>
+            </div>
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -842,14 +921,9 @@ function BuilderPageContent() {
                 </CardHeader>
                 <CardContent className="max-h-[calc(100vh-160px)] overflow-y-auto">
                   {currentView === 'customize' ? (
-                    <CustomizeForm
-                      data={resumeData}
-                      onChange={setResumeData}
-                    />
+                    <CustomizeForm />
                   ) : (
                     <ResumeForm
-                      data={resumeData}
-                      onChange={setResumeData}
                       selectedSections={selectedSections}
                       onOpenSectionsModal={() => setAddSectionsModalOpen(true)}
                       onSectionsOrderChange={setSelectedSections}
@@ -870,10 +944,12 @@ function BuilderPageContent() {
               style={{ width: '210mm', height: '297mm', maxWidth: '100%', boxSizing: 'border-box', overflow: 'hidden', padding: '32px' }}
             >
               <ResumePreview
-                data={resumeData}
+                ref={resumePreviewRef}
                 selectedSections={selectedSections}
                 generatedContent={generatedContent}
                 onToggleSection={handleToggleSection}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
               />
             </motion.div>
           </div>
@@ -887,7 +963,7 @@ function BuilderPageContent() {
         onAddSection={handleAddSection}
         onRemoveSection={handleRemoveSection}
       />
-    </div>
+    </div >
   );
 }
 

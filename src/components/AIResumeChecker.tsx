@@ -4,20 +4,21 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { apiClient } from '@/lib/apiClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  CheckCircle, 
-  AlertTriangle, 
-  XCircle, 
-  FileText, 
-  Zap, 
-  Award, 
-  User, 
-  Palette, 
-  RefreshCw, 
+import {
+  CheckCircle,
+  AlertTriangle,
+  XCircle,
+  FileText,
+  Zap,
+  Award,
+  User,
+  Palette,
+  RefreshCw,
   Sparkles,
   TrendingUp,
   Target,
@@ -76,16 +77,15 @@ interface BadgeComponentProps {
 }
 
 const BadgeComponent = ({ children, variant = "default", className = "" }: BadgeComponentProps) => (
-  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-    variant === 'outline' ? 'border border-gray-300 text-gray-700' : 'bg-gray-100 text-gray-800'
-  } ${className}`}>
+  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${variant === 'outline' ? 'border border-gray-300 text-gray-700' : 'bg-gray-100 text-gray-800'
+    } ${className}`}>
     {children}
   </span>
 );
 
-export default function ResumeChecker({ 
-  resumeData, 
-  resumeContent, 
+export default function ResumeChecker({
+  resumeData,
+  resumeContent,
   // Removed unused variable pdfBlob
   onAnalysisComplete,
   analysisMode = 'manual'
@@ -98,9 +98,9 @@ export default function ResumeChecker({
   const runAIAnalysis = async () => {
     setIsAnalyzing(true);
     setError(null);
-    
+
     try {
-      const response = await fetch('/api/analyze-resume', {
+      const response = await apiClient('/api/analyze-resume', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -186,9 +186,9 @@ export default function ResumeChecker({
                 <span className="text-sm font-medium text-blue-800">AI Analysis in Progress</span>
               </div>
               <div className="text-sm text-blue-700">
-                ✓ Parsing resume structure and content<br/>
-                ✓ Analyzing ATS compatibility<br/>
-                ✓ Evaluating industry alignment<br/>
+                ✓ Parsing resume structure and content<br />
+                ✓ Analyzing ATS compatibility<br />
+                ✓ Evaluating industry alignment<br />
                 ✓ Generating personalized recommendations...
               </div>
             </div>
@@ -293,7 +293,7 @@ export default function ResumeChecker({
               </div>
               <Progress value={analysis.overallScore} className="h-3" />
             </div>
-            
+
             <div className="bg-white/80 p-4 rounded-lg border">
               <p className="text-gray-700 text-sm leading-relaxed">{analysis.overallFeedback}</p>
             </div>
@@ -312,8 +312,8 @@ export default function ResumeChecker({
           <TabsTrigger value="overview">Overview</TabsTrigger>
           {Object.entries(categoryLabels).map(([key, label]) => (
             <TabsTrigger key={key} value={key} className="flex items-center gap-1">
-              {React.createElement(categoryIcons[key as keyof typeof categoryIcons], { 
-                className: "w-4 h-4" 
+              {React.createElement(categoryIcons[key as keyof typeof categoryIcons], {
+                className: "w-4 h-4"
               })}
               {label}
             </TabsTrigger>
@@ -494,7 +494,7 @@ function CategoryDetailCard({ category, data }: { category: string, data: AIAnal
         <div className="bg-white/80 p-4 rounded-lg border">
           <p className="text-gray-700 leading-relaxed">{data.feedback}</p>
         </div>
-        
+
         {data.specificIssues.length > 0 && (
           <div className="space-y-2">
             <h4 className="font-medium text-gray-900 flex items-center gap-2">

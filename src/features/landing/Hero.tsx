@@ -71,7 +71,7 @@ export default function Hero() {
           transition={{ delay: 0.5, duration: 0.6 }}
         >
           <Button asChild size="lg" className="gradient-primary text-white font-bold px-10 py-6 text-lg rounded-xl hover:shadow-xl transition-all duration-300 btn-hover-lift">
-            <Link href="/builder">Start Building Free <ArrowRight className="ml-2 h-5 w-5" /></Link>
+            <Link href="/dashboard">Start Building Free <ArrowRight className="ml-2 h-5 w-5" /></Link>
           </Button>
           <Button asChild variant="outline" size="lg" className="glass-card border-2 border-orange-200/60 text-foreground font-semibold px-10 py-6 text-lg rounded-xl hover:bg-white/20">
             <Link href="#how-it-works">See how it works</Link>

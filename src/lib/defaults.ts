@@ -17,8 +17,8 @@ export const DEFAULT_DESIGN: ResumeDesign = {
     spacing: {
         fontSize: 10,
         lineHeight: 1.3,
-        marginLR: 18,
-        marginTB: 16,
+        marginLR: 14,
+        marginTB: 18,
         entrySpacing: 5,
     },
     colors: {

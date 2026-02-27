@@ -1,27 +1,27 @@
-                                                                                                                                                                        /**
- * API Route for AI-Powered Resume Generation
- * Integrates with Groq (Mixtral-8x7b) for intelligent resume creation and optimization
- */
+/**
+* API Route for AI-Powered Resume Generation
+* Integrates with Groq (Mixtral-8x7b) for intelligent resume creation and optimization
+*/
 
 import { NextRequest, NextResponse } from 'next/server';
 import { generateResumeContent, optimizeResumeForATS } from '@/lib/groq';
 import { analyzeATSCompatibility } from '@/lib/ats';
 import { distributeAIContent, isAIGeneratedContent } from '@/lib/resume-parser';
-import type { ResumeData } from '@/lib/types';
+import type { ResumeData, ATSAnalysis } from '@/lib/types';
 import { DEFAULT_DESIGN } from '@/lib/defaults';
 
 export async function POST(request: NextRequest) {
-  try {                                                                                              
+  try {
     const body = await request.json();
-  const { action, data } = body;
+    const { action, data } = body;
 
     switch (action) {
       case 'generate':
-          return await generateResume(data);
+        return await generateResume(data);
       case 'optimize':
-          return await optimizeResume(data);
+        return await optimizeResume(data);
       case 'analyze':
-          return await analyzeResume(data);
+        return await analyzeResume(data);
       default:
         return NextResponse.json(
           { error: 'Invalid action. Supported actions: generate, optimize, analyze' },
@@ -74,22 +74,22 @@ async function generateResume(data: Partial<ResumeData>) {
     };
 
     const response = await generateResumeContent(resumeData);
-    
+
     if (!response.content) {
       throw new Error('Failed to generate resume content');
     }
 
     // Enhanced: Distribute AI content across all resume sections
     let enhancedResumeData = resumeData;
-    console.log('📄 AI Generated Content:', response.content); 
-    
+    console.log('📄 AI Generated Content:', response.content);
+
     // Check if content should be distributed
     const shouldDistribute = isAIGeneratedContent(response.content);
     console.log('🤔 Should distribute content?', shouldDistribute);
     console.log('📏 Content length:', response.content.length);
     console.log('🔍 Has Professional Summary?', response.content.includes('Professional Summary'));
     console.log('🔍 Has Technical Skills?', response.content.includes('Technical Skills'));
-    
+
     if (shouldDistribute) {
       console.log('✅ Distributing AI content...');
       try {
@@ -133,9 +133,9 @@ async function generateResume(data: Partial<ResumeData>) {
         atsScore: finalATSScore, // Use consistent ATS score
         suggestions,
         keywordOptimization: {
-          matched: atsAnalysis.matchedKeywords,
-          missing: atsAnalysis.missingKeywords.slice(0, 10),
-          suggestions: atsAnalysis.missingKeywords.slice(0, 5).map(keyword => ({
+          matched: atsAnalysis?.matchedKeywords || [],
+          missing: (atsAnalysis?.missingKeywords || []).slice(0, 10),
+          suggestions: (atsAnalysis?.missingKeywords || []).slice(0, 5).map(keyword => ({
             keyword,
             priority: 'high',
             suggestion: `Consider incorporating "${keyword}" in your experience or skills sections`
@@ -144,10 +144,13 @@ async function generateResume(data: Partial<ResumeData>) {
       }
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Resume generation error:', error);
     return NextResponse.json(
-      { error: 'Failed to generate resume content. Please try again.' },
+      {
+        success: false,
+        error: error?.message || 'Failed to generate resume content. Please try again.'
+      },
       { status: 500 }
     );
   }
@@ -166,7 +169,7 @@ async function optimizeResume(data: ResumeData) {
     }
 
     const currentContent = data.personalInfo.summary || '';
-    
+
     if (!currentContent.trim()) {
       return NextResponse.json(
         { error: 'Resume content is required for optimization' },
@@ -278,17 +281,19 @@ async function analyzeResume(data: ResumeData) {
 /**
  * Generate improvement suggestions based on context
  */
-import type { ATSAnalysis } from '@/lib/types';
 function generateSuggestions(resumeData: ResumeData, generatedContent: string, atsAnalysis: ATSAnalysis) {
   const suggestions = [];
 
+  const missingKeywords = atsAnalysis?.missingKeywords || [];
+  const score = atsAnalysis?.score || 0;
+
   // Keyword suggestions
-  if (atsAnalysis.missingKeywords.length > 0) {
+  if (missingKeywords.length > 0) {
     suggestions.push({
       type: 'keywords',
       priority: 'high',
-      message: `Consider incorporating these missing keywords: ${atsAnalysis.missingKeywords.slice(0, 5).join(', ')}`,
-      keywords: atsAnalysis.missingKeywords.slice(0, 5)
+      message: `Consider incorporating these missing keywords: ${missingKeywords.slice(0, 5).join(', ')}`,
+      keywords: missingKeywords.slice(0, 5)
     });
   }
 
@@ -313,7 +318,7 @@ function generateSuggestions(resumeData: ResumeData, generatedContent: string, a
   }
 
   // ATS score suggestions
-  if (atsAnalysis.score < 80) {
+  if (score < 80) {
     suggestions.push({
       type: 'ats',
       priority: 'medium',
@@ -352,7 +357,7 @@ function generateAnalysisSuggestions(atsAnalysis: ATSAnalysis, data: ResumeData)
   }
 
   // Experience suggestions
-  const hasQuantifiedAchievements = data.experience.some(exp => 
+  const hasQuantifiedAchievements = data.experience.some(exp =>
     exp.achievements.some(achievement => /\d+/.test(achievement))
   );
 
@@ -383,10 +388,10 @@ function generateAnalysisSuggestions(atsAnalysis: ATSAnalysis, data: ResumeData)
  */
 function generateCompetitiveAnalysis(atsAnalysis: ATSAnalysis) {
   const score = atsAnalysis.score;
-  
+
   let competitiveLevel = 'Needs Improvement';
   let benchmarkMessage = 'Your resume needs significant optimization to compete effectively.';
-  
+
   if (score >= 90) {
     competitiveLevel = 'Excellent';
     benchmarkMessage = 'Your resume is highly competitive and likely to pass ATS screening.';

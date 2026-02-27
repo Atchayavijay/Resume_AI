@@ -32,7 +32,24 @@ import {
   AlignJustify,
   Sparkles,
   SpellCheck2,
-  Minimize2
+  Minimize2,
+  Edit2,
+  Check,
+  Mail,
+  Phone as PhoneIcon,
+  MapPin,
+  Linkedin,
+  Globe as GlobeIcon,
+  ChevronDown,
+  ChevronUp,
+  Lightbulb,
+  ArrowUpDown,
+  ExternalLink,
+  GripVertical,
+  Eye,
+  EyeOff,
+  Trash2,
+  Calendar
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -44,9 +61,10 @@ import RichTextEditor from '@/components/RichTextEditor';
 import type { ResumeData, PersonalInfo, Experience, Education, Skill, Certificate, Interest, Project, Course, Award, Organisation, Publication, Reference, Language, Declaration, CustomSection } from '@/lib/types';
 import { cn, generateId, isValidEmail, isValidPhone, isValidUrl } from '@/lib/utils';
 
+import { useResumeStore } from '@/store/useResumeStore';
+
 interface ResumeFormProps {
-  data: ResumeData;
-  onChange: (data: ResumeData) => void;
+  // data and onChange removed to use Zustand store
   selectedSections?: string[];
   onOpenSectionsModal?: () => void;
   onSectionsOrderChange?: (newOrder: string[]) => void;
@@ -54,7 +72,25 @@ interface ResumeFormProps {
 
 type SummaryAssistMode = 'improve' | 'grammar' | 'shorter';
 
-const ResumeForm: React.FC<ResumeFormProps> = ({ data, onChange, selectedSections = ['personalInfo', 'experience', 'education', 'skills'], onOpenSectionsModal, onSectionsOrderChange }) => {
+const ResumeForm: React.FC<ResumeFormProps> = ({ selectedSections = ['personalInfo', 'experience', 'education', 'skills'], onOpenSectionsModal, onSectionsOrderChange }) => {
+  const { data, setResumeData: onChange } = useResumeStore();
+  const [isEditingPersonal, setIsEditingPersonal] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editingHeaderId, setEditingHeaderId] = useState<string | null>(null);
+  const [visibleOptionalFields, setVisibleOptionalFields] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        handlePersonalInfoChange('photo', reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSummaryChange = useCallback((value: string) => {
     onChange({
       ...data,
@@ -65,7 +101,15 @@ const ResumeForm: React.FC<ResumeFormProps> = ({ data, onChange, selectedSection
     });
   }, [data, onChange]);
 
-
+  const handleSectionLabelChange = useCallback((sectionId: string, newLabel: string) => {
+    onChange({
+      ...data,
+      sectionLabels: {
+        ...(data.sectionLabels || {}),
+        [sectionId]: newLabel
+      }
+    });
+  }, [data, onChange]);
 
   // Experience handlers
   const addExperience = useCallback(() => {
@@ -105,33 +149,74 @@ const ResumeForm: React.FC<ResumeFormProps> = ({ data, onChange, selectedSection
     });
   }, [data, onChange]);
 
+  const toggleSectionVisibility = useCallback((sectionId: string) => {
+    const hiddenSections = [...(data.hiddenSections || [])];
+    const index = hiddenSections.indexOf(sectionId);
+    if (index > -1) {
+      hiddenSections.splice(index, 1);
+    } else {
+      hiddenSections.push(sectionId);
+    }
+    onChange({
+      ...data,
+      hiddenSections
+    });
+  }, [data, onChange]);
+
+  const toggleEntryVisibility = useCallback((sectionId: string, index: number) => {
+    const sectionData = [...((data as any)[sectionId] || [])];
+    if (sectionData[index]) {
+      sectionData[index] = {
+        ...sectionData[index],
+        visible: sectionData[index].visible === false ? true : false
+      };
+      onChange({
+        ...data,
+        [sectionId]: sectionData
+      });
+    }
+  }, [data, onChange]);
+
   // ...existing code...
   const [expandedSection, setExpandedSection] = useState<string>('personalInfo');
 
   // Handle drag end for section reordering
   const handleDragEnd = (result: DropResult) => {
+    const { source, destination } = result;
+    if (!destination) return;
 
-
-    if (!result.destination) return;
-    // Only allow drag for sections after personalInfo
-    const sections = Array.from(selectedSections);
-    const personalInfoIndex = sections.indexOf('personalInfo');
-    // Remove personalInfo from drag logic
-    const draggableSections = sections.filter(id => id !== 'personalInfo');
-    const [removed] = draggableSections.splice(result.source.index, 1);
-    draggableSections.splice(result.destination.index, 0, removed);
-    // Rebuild new order: always keep personalInfo first
-    const newOrder = ['personalInfo', ...draggableSections];
-    if (typeof onSectionsOrderChange === 'function') {
-      onSectionsOrderChange(newOrder);
+    // Internal reordering for segments (Experience, Education, etc.)
+    if (source.droppableId.startsWith('entries-')) {
+      const sectionId = source.droppableId.replace('entries-', '') as keyof ResumeData;
+      const entries = Array.from((data as any)[sectionId] || []) as any[];
+      const [removed] = entries.splice(source.index, 1);
+      entries.splice(destination.index, 0, removed);
+      onChange({ ...data, [sectionId]: entries });
+      return;
     }
-    // Set expanded section to the dropped section
-    setExpandedSection(newOrder[result.destination.index + 1]);
+
+    if (source.droppableId === 'sections-droppable') {
+      // Only allow drag for sections after personalInfo
+      const sections = Array.from(selectedSections);
+      // Rebuild new order: always keep personalInfo first
+      const mustBeFirst = ['personalInfo'].filter(id => selectedSections.includes(id));
+      const draggableSections = sections.filter(id => !mustBeFirst.includes(id));
+      const [removed] = draggableSections.splice(source.index, 1);
+      draggableSections.splice(destination.index, 0, removed);
+
+      const newOrder = [...mustBeFirst, ...draggableSections];
+      if (typeof onSectionsOrderChange === 'function') {
+        onSectionsOrderChange(newOrder);
+      }
+      // Set expanded section to the dropped section
+      setExpandedSection(newOrder[destination.index + mustBeFirst.length]);
+    }
   };
 
   const toggleSection = (sectionId: string) => {
-
     setExpandedSection(prev => prev === sectionId ? '' : sectionId);
+    setEditingEntryId(null);
+    setEditingHeaderId(null);
   }
 
   // Handle personal info changes (declared early so other hooks can reference it)
@@ -643,6 +728,7 @@ const ResumeForm: React.FC<ResumeFormProps> = ({ data, onChange, selectedSection
 
   const allSections = [
     { id: 'personalInfo', label: 'Personal Information', icon: User, description: 'Basic contact details', category: 'required' },
+    { id: 'summary', label: 'Professional Summary', icon: FileText, description: 'Career summary & goals', category: 'optional' },
     { id: 'job', label: 'Job Target', icon: Briefcase, description: 'Desired position & company', category: 'optional' },
     { id: 'experience', label: 'Work Experience', icon: Briefcase, description: 'Professional background', category: 'optional' },
     { id: 'education', label: 'Education', icon: GraduationCap, description: 'Academic qualifications', category: 'optional' },
@@ -669,1260 +755,2263 @@ const ResumeForm: React.FC<ResumeFormProps> = ({ data, onChange, selectedSection
   const renderSectionContent = (sectionId: string) => {
     switch (sectionId) {
       case 'personalInfo':
-        return (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1">
-                <Label htmlFor="fullName" className="font-medium text-base">Full Name</Label>
-                <Input
-                  id="fullName"
-                  value={data.personalInfo.fullName}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handlePersonalInfoChange('fullName', e.target.value)}
-                  placeholder="John Doe"
-                  className="bg-background/50 px-4 py-2 rounded-lg border border-border focus:ring-2 focus:ring-primary/30"
-                />
+        if (!isEditingPersonal) {
+          return (
+            <div
+              className="relative p-5 cursor-pointer group transition-all"
+              onClick={() => setIsEditingPersonal(true)}
+            >
+              <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                <button
+                  className="p-2 bg-orange-500 text-white rounded-full shadow-lg hover:bg-orange-600 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditingPersonal(true);
+                  }}
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="email" className="font-medium text-base">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={data.personalInfo.email}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handlePersonalInfoChange('email', e.target.value)}
-                  placeholder="john@example.com"
-                  className={cn(
-                    "bg-background/50 px-4 py-2 rounded-lg border border-border focus:ring-2 focus:ring-primary/30",
-                    data.personalInfo.email && !isValidEmail(data.personalInfo.email) && "border-destructive"
-                  )}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="phone" className="font-medium text-base">Phone</Label>
-                <Input
-                  id="phone"
-                  value={data.personalInfo.phone}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handlePersonalInfoChange('phone', e.target.value)}
-                  placeholder="+1 (555) 123-4567"
-                  className={cn(
-                    "bg-background/50 px-4 py-2 rounded-lg border border-border focus:ring-2 focus:ring-primary/30",
-                    data.personalInfo.phone && !isValidPhone(data.personalInfo.phone) && "border-destructive"
-                  )}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="location" className="font-medium text-base">Location</Label>
-                <Input
-                  id="location"
-                  value={data.personalInfo.location}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handlePersonalInfoChange('location', e.target.value)}
-                  placeholder="New York, NY"
-                  className="bg-background/50 px-4 py-2 rounded-lg border border-border focus:ring-2 focus:ring-primary/30"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="jobTitle" className="font-medium text-base">Job Title</Label>
-                <Input
-                  id="jobTitle"
-                  value={data.jobTitle || ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange({ ...data, jobTitle: e.target.value })}
-                  placeholder="Software Engineer, Full Stack Developer, etc."
-                  className="bg-background/50 px-4 py-2 rounded-lg border border-border focus:ring-2 focus:ring-primary/30"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="linkedIn" className="font-medium text-base">LinkedIn (Optional)</Label>
-                <Input
-                  id="linkedIn"
-                  value={data.personalInfo.linkedIn || ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handlePersonalInfoChange('linkedIn', e.target.value)}
-                  placeholder="https://linkedin.com/in/johndoe"
-                  className={cn(
-                    "bg-background/50 px-4 py-2 rounded-lg border border-border focus:ring-2 focus:ring-primary/30",
-                    data.personalInfo.linkedIn && !isValidUrl(data.personalInfo.linkedIn) && "border-destructive"
-                  )}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="website" className="font-medium text-base">Website (Optional)</Label>
-                <Input
-                  id="website"
-                  value={data.personalInfo.website || ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handlePersonalInfoChange('website', e.target.value)}
-                  placeholder="https://johndoe.com"
-                  className={cn(
-                    "bg-background/50 px-4 py-2 rounded-lg border border-border focus:ring-2 focus:ring-primary/30",
-                    data.personalInfo.website && !isValidUrl(data.personalInfo.website) && "border-destructive"
-                  )}
-                />
+
+              <div className="flex justify-between items-start gap-6">
+                <div className="flex-1 space-y-1">
+                  <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                    {data.personalInfo.fullName || 'Your Name'}
+                  </h2>
+                  <p className="text-base font-semibold text-orange-500 mb-3 block">
+                    {data.jobTitle || 'Your Profession'}
+                  </p>
+
+                  <div className="space-y-1.5">
+                    {data.personalInfo.email && (
+                      <div className="flex items-center text-slate-500 gap-2.5">
+                        <Mail className="w-3.5 h-3.5" />
+                        <span className="text-sm font-medium">{data.personalInfo.email}</span>
+                      </div>
+                    )}
+                    {data.personalInfo.phone && (
+                      <div className="flex items-center text-slate-500 gap-2.5">
+                        <PhoneIcon className="w-3.5 h-3.5" />
+                        <span className="text-sm font-medium">{data.personalInfo.phone}</span>
+                      </div>
+                    )}
+                    {data.personalInfo.location && (
+                      <div className="flex items-center text-slate-500 gap-2.5">
+                        <MapPin className="w-3.5 h-3.5" />
+                        <span className="text-sm font-medium">{data.personalInfo.location}</span>
+                      </div>
+                    )}
+                    {data.personalInfo.linkedIn && (
+                      <div className="flex items-center text-slate-500 gap-2.5">
+                        <Linkedin className="w-3.5 h-3.5" />
+                        <span className="text-sm font-medium">{data.personalInfo.linkedIn}</span>
+                      </div>
+                    )}
+                    {data.personalInfo.github && (
+                      <div className="flex items-center text-slate-500 gap-2.5">
+                        <Code className="w-3.5 h-3.5" />
+                        <span className="text-sm font-medium">{data.personalInfo.github}</span>
+                      </div>
+                    )}
+                    {data.personalInfo.website && (
+                      <div className="flex items-center text-slate-500 gap-2.5">
+                        <GlobeIcon className="w-3.5 h-3.5" />
+                        <span className="text-sm font-medium">{data.personalInfo.website}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {data.personalInfo.photo ? (
+                  <div className="relative w-28 h-28 rounded-2xl overflow-hidden shadow-sm shrink-0 border border-slate-100">
+                    <img src={data.personalInfo.photo} alt="Profile" className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="w-28 h-28 rounded-2xl bg-slate-50 flex items-center justify-center border border-dashed border-slate-200 shrink-0">
+                    <User className="w-8 h-8 text-slate-300" />
+                  </div>
+                )}
               </div>
             </div>
-            <div className="space-y-2 mt-4">
-              <Label htmlFor="summary" className="font-medium text-base">Professional Summary</Label>
-              <RichTextEditor
-                value={data.personalInfo.summary || ''}
-                onChange={handleSummaryChange}
-                placeholder="Write a professional summary or objective statement that highlights your key qualifications and career goals..."
-                minHeight="200px"
-                onAssist={handleSummaryAssist}
-              />
+          );
+        }
+
+        // --- FlowCV-style Edit Personal Details Form ---
+        const optionalDetailFields = [
+          { id: 'website', label: 'Website', icon: GlobeIcon },
+          { id: 'nationality', label: 'Nationality', icon: Globe },
+          { id: 'dateOfBirth', label: 'Date of Birth', icon: Calendar },
+          { id: 'visa', label: 'Visa', icon: Shield },
+          { id: 'passport', label: 'Passport or Id', icon: Shield },
+          { id: 'gender', label: 'Gender/Pronoun', icon: User },
+        ];
+
+        const activeOptionalFields = optionalDetailFields.filter(
+          f => visibleOptionalFields.includes(f.id) || !!(data.personalInfo as any)[f.id]
+        );
+        const inactiveOptionalFields = optionalDetailFields.filter(
+          f => !visibleOptionalFields.includes(f.id) && !(data.personalInfo as any)[f.id]
+        );
+
+        const showOptionalField = (fieldId: string) => {
+          setVisibleOptionalFields(prev => [...prev, fieldId]);
+        };
+
+        const removeOptionalField = (fieldId: string) => {
+          setVisibleOptionalFields(prev => prev.filter(id => id !== fieldId));
+          handlePersonalInfoChange(fieldId as keyof PersonalInfo, '');
+        };
+
+        return (
+          <div className="p-6 bg-white relative">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Edit Personal Details</h2>
             </div>
 
+            {/* Full Name + Photo Row */}
+            <div className="flex gap-6 items-start mb-5">
+              <div className="flex-1 space-y-4">
+                {/* Full Name */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700">Full name</Label>
+                  <Input
+                    value={data.personalInfo.fullName}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => handlePersonalInfoChange('fullName', e.target.value)}
+                    placeholder="Your full name"
+                    className="h-11 bg-slate-50/80 border-slate-200 rounded-lg text-sm font-medium focus-visible:ring-2 focus-visible:ring-orange-500/20 focus-visible:border-orange-300"
+                  />
+                </div>
+
+                {/* Professional Title */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700">Professional title</Label>
+                  <RichTextEditor
+                    value={data.jobTitle || ''}
+                    onChange={(value) => onChange({ ...data, jobTitle: value })}
+                    placeholder="e.g. Full Stack Developer"
+                    minHeight="50px"
+                  />
+                </div>
+              </div>
+
+              {/* Photo Upload */}
+              <div className="shrink-0 flex flex-col items-center gap-1.5">
+                <Label className="text-xs font-bold text-slate-700">Photo</Label>
+                <div
+                  className="relative group cursor-pointer w-20 h-20"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept="image/*"
+                    onChange={handlePhotoUpload}
+                  />
+                  {data.personalInfo.photo ? (
+                    <div className="w-full h-full rounded-full overflow-hidden shadow-sm border-2 border-slate-200 relative">
+                      <img src={data.personalInfo.photo} alt="Profile" className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-full">
+                        <span className="text-white text-[9px] font-bold uppercase">Change</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full h-full rounded-full bg-slate-100 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center gap-0.5 group-hover:bg-slate-200/70 transition-colors">
+                      <User className="w-6 h-6 text-slate-400" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-slate-100 my-5" />
+
+            {/* Core Fields */}
+            <div className="space-y-4">
+              {/* Email */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">Email</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={data.personalInfo.email}
+                    onChange={(e) => handlePersonalInfoChange('email', e.target.value)}
+                    placeholder="your@email.com"
+                    className="h-11 bg-slate-50/80 border-slate-200 rounded-lg text-sm flex-1 focus-visible:ring-2 focus-visible:ring-orange-500/20 focus-visible:border-orange-300"
+                  />
+                  <button className="shrink-0 p-2 text-slate-300 hover:text-slate-500 transition-colors cursor-grab">
+                    <GripVertical className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">Phone</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={data.personalInfo.phone}
+                    onChange={(e) => handlePersonalInfoChange('phone', e.target.value)}
+                    placeholder="+91 1234567890"
+                    className="h-11 bg-slate-50/80 border-slate-200 rounded-lg text-sm flex-1 focus-visible:ring-2 focus-visible:ring-orange-500/20 focus-visible:border-orange-300"
+                  />
+                  <button className="shrink-0 p-2 text-slate-300 hover:text-slate-500 transition-colors cursor-grab">
+                    <GripVertical className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Location */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">Location</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={data.personalInfo.location}
+                    onChange={(e) => handlePersonalInfoChange('location', e.target.value)}
+                    placeholder="City, State, Country"
+                    className="h-11 bg-slate-50/80 border-slate-200 rounded-lg text-sm flex-1 focus-visible:ring-2 focus-visible:ring-orange-500/20 focus-visible:border-orange-300"
+                  />
+                  <button className="shrink-0 p-2 text-slate-300 hover:text-slate-500 transition-colors cursor-grab">
+                    <GripVertical className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* LinkedIn */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">LinkedIn</Label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      value={data.personalInfo.linkedIn || ''}
+                      onChange={(e) => handlePersonalInfoChange('linkedIn', e.target.value)}
+                      placeholder="Enter LinkedIn"
+                      className="h-11 bg-slate-50/80 border-slate-200 rounded-lg text-sm pr-16 focus-visible:ring-2 focus-visible:ring-orange-500/20 focus-visible:border-orange-300"
+                    />
+                    {data.personalInfo.linkedIn && (
+                      <a
+                        href={data.personalInfo.linkedIn.startsWith('http') ? data.personalInfo.linkedIn : `https://${data.personalInfo.linkedIn}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-orange-600 hover:text-orange-800 bg-orange-50 rounded-md border border-orange-100 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <LinkIcon className="w-3 h-3" />
+                        <span>Link</span>
+                      </a>
+                    )}
+                  </div>
+                  <button className="shrink-0 p-2 text-slate-300 hover:text-slate-500 transition-colors cursor-grab">
+                    <GripVertical className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* GitHub */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">GitHub</Label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      value={data.personalInfo.github || ''}
+                      onChange={(e) => handlePersonalInfoChange('github', e.target.value)}
+                      placeholder="Enter GitHub"
+                      className="h-11 bg-slate-50/80 border-slate-200 rounded-lg text-sm pr-16 focus-visible:ring-2 focus-visible:ring-orange-500/20 focus-visible:border-orange-300"
+                    />
+                    {data.personalInfo.github && (
+                      <a
+                        href={data.personalInfo.github.startsWith('http') ? data.personalInfo.github : `https://${data.personalInfo.github}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-orange-600 hover:text-orange-800 bg-orange-50 rounded-md border border-orange-100 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <LinkIcon className="w-3 h-3" />
+                        <span>Link</span>
+                      </a>
+                    )}
+                  </div>
+                  <button className="shrink-0 p-2 text-slate-300 hover:text-slate-500 transition-colors cursor-grab">
+                    <GripVertical className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Active Optional Fields (rendered as full inputs once user clicked the chip) */}
+              {activeOptionalFields.map(field => (
+                <div key={field.id} className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-slate-700">{field.label}</Label>
+                    <button
+                      onClick={() => removeOptionalField(field.id)}
+                      className="text-slate-300 hover:text-orange-500 transition-colors p-1"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type={field.id === 'dateOfBirth' ? 'date' : 'text'}
+                      value={(data.personalInfo as any)[field.id] || ''}
+                      onChange={(e) => handlePersonalInfoChange(field.id as keyof PersonalInfo, e.target.value)}
+                      placeholder={`Enter ${field.label.toLowerCase()}`}
+                      className="h-11 bg-slate-50/80 border-slate-200 rounded-lg text-sm flex-1 focus-visible:ring-2 focus-visible:ring-orange-500/20 focus-visible:border-orange-300"
+                    />
+                    <button className="shrink-0 p-2 text-slate-300 hover:text-slate-500 transition-colors cursor-grab">
+                      <GripVertical className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Add Details Section */}
+            {inactiveOptionalFields.length > 0 && (
+              <div className="mt-6">
+                <div className="border-t border-slate-100 pt-5">
+                  <h3 className="text-sm font-bold text-slate-800 mb-3">Add details</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {inactiveOptionalFields.map(field => (
+                      <button
+                        key={field.id}
+                        onClick={() => showOptionalField(field.id)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-full hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>{field.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Done Button */}
+            <div className="mt-8">
+              <Button
+                size="lg"
+                className="w-full h-12 rounded-xl text-sm font-bold bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white shadow-lg hover:shadow-xl transition-all"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsEditingPersonal(false);
+                }}
+              >
+                <Check className="w-4 h-4 mr-2" />
+                Done
+              </Button>
+            </div>
+          </div>
+        );
+
+      case 'summary':
+        return (
+          <div className="space-y-2">
+            <RichTextEditor
+              value={data.personalInfo.summary || ''}
+              onChange={handleSummaryChange}
+              placeholder="Write a professional summary or objective statement that highlights your key qualifications and career goals..."
+              minHeight="200px"
+              onAssist={handleSummaryAssist}
+            />
           </div>
         );
 
       case 'experience':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Work Experience</h4>
-              <Button
-                onClick={addExperience}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Experience</span>
-              </Button>
-            </div>
+        if (editingEntryId) {
+          const expIndex = data.experience.findIndex(e => e.id === editingEntryId);
+          const exp = data.experience[expIndex];
+          if (!exp) { setEditingEntryId(null); return null; }
 
-            {data.experience.map((exp, index) => (
-              <motion.div
-                key={exp.id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.2 }}
-                className="p-4 rounded-lg border border-border/50 bg-card/30 space-y-4"
-              >
-                <div className="flex items-center justify-between">
-                  <h5 className="font-medium">Experience #{index + 1}</h5>
-                  {data.experience.length > 1 && (
-                    <Button
-                      onClick={() => removeExperience(index)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
+          return (
+            <div className="space-y-6 p-2">
+              <div className="flex items-center justify-between border-b pb-4">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wide text-xs">Edit Experience</h3>
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Company</Label>
-                    <Input
-                      value={exp.company}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleExperienceChange(index, 'company', e.target.value)}
-                      placeholder="Company Name"
-                      className="bg-background/50"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Position</Label>
-                    <Input
-                      value={exp.position}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleExperienceChange(index, 'position', e.target.value)}
-                      placeholder="Job Title"
-                      className="bg-background/50"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Start Date</Label>
-                    <Input
-                      type="month"
-                      value={exp.startDate}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleExperienceChange(index, 'startDate', e.target.value)}
-                      className="bg-background/50"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="flex items-center space-x-2">
-                      <span>End Date</span>
-                      <label className="flex items-center space-x-1 text-xs">
-                        <input
-                          type="checkbox"
-                          checked={exp.current}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleExperienceChange(index, 'current', e.target.checked)}
-                          className="rounded"
-                        />
-                        <span>Current</span>
-                      </label>
-                    </Label>
-                    <Input
-                      type="month"
-                      value={exp.endDate}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleExperienceChange(index, 'endDate', e.target.value)}
-                      disabled={exp.current}
-                      className="bg-background/50"
-                    />
-                  </div>
-                </div>
-
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>Description</Label>
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Company</Label>
                   <RichTextEditor
-                    value={exp.description}
-                    onChange={(value) => handleExperienceChange(index, 'description', value)}
-                    placeholder="Describe your role and responsibilities..."
-                    minHeight="150px"
+                    value={exp.company}
+                    onChange={(value) => handleExperienceChange(expIndex, 'company', value)}
+                    placeholder="Enter company name"
+                    minHeight="50px"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Key Achievements</Label>
-                    <Button
-                      onClick={() => addAchievement(index)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs"
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Add Achievement
-                    </Button>
-                  </div>
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Position</Label>
+                  <RichTextEditor
+                    value={exp.position}
+                    onChange={(value) => handleExperienceChange(expIndex, 'position', value)}
+                    placeholder="Software Engineer"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Start Date</Label>
+                  <Input
+                    type="month"
+                    value={exp.startDate}
+                    onChange={(e) => handleExperienceChange(expIndex, 'startDate', e.target.value)}
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
+                    <span>End Date</span>
+                    <label className="flex items-center space-x-2 cursor-pointer lowercase">
+                      <input
+                        type="checkbox"
+                        checked={exp.current}
+                        onChange={(e) => handleExperienceChange(expIndex, 'current', e.target.checked)}
+                        className="rounded accent-orange-500"
+                      />
+                      <span>Current</span>
+                    </label>
+                  </Label>
+                  <Input
+                    type="month"
+                    value={exp.endDate}
+                    onChange={(e) => handleExperienceChange(expIndex, 'endDate', e.target.value)}
+                    disabled={exp.current}
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20 disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-[11px] font-bold text-slate-500 uppercase">Description</Label>
+                <RichTextEditor
+                  value={exp.description}
+                  onChange={(value) => handleExperienceChange(expIndex, 'description', value)}
+                  placeholder="Describe your role and responsibilities..."
+                  minHeight="200px"
+                />
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Key Achievements</Label>
+                  <Button
+                    onClick={() => addAchievement(expIndex)}
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-orange-500 hover:text-orange-600 font-bold"
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add Achievement
+                  </Button>
+                </div>
+                <div className="space-y-3">
                   {exp.achievements.map((achievement, achIndex) => (
-                    <div key={achIndex} className="flex space-x-2">
+                    <div key={achIndex} className="flex gap-2">
                       <Input
                         value={achievement}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleAchievementChange(index, achIndex, e.target.value)}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleAchievementChange(expIndex, achIndex, e.target.value)}
                         placeholder="• Achieved 20% increase in sales..."
-                        className="bg-background/50"
+                        className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20 flex-1"
                       />
                       <Button
-                        onClick={() => removeAchievement(index, achIndex)}
+                        onClick={() => removeAchievement(expIndex, achIndex)}
                         variant="ghost"
                         size="sm"
-                        className="text-destructive"
+                        className="text-slate-300 hover:text-orange-500"
                       >
-                        <Minus className="w-4 h-4" />
+                        <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
                   ))}
                 </div>
-              </motion.div>
-            ))}
-          </div>
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  onClick={() => setEditingEntryId(null)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 px-8 rounded-xl flex items-center gap-2 shadow-sm"
+                >
+                  <Check className="w-4 h-4" />
+                  Done
+                </Button>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <Droppable droppableId="entries-experience" type="experience">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col border rounded-xl overflow-hidden divide-y divide-slate-100"
+              >
+                {data.experience.map((exp, index) => (
+                  <Draggable key={exp.id} draggableId={exp.id} index={index}>
+                    {(draggableProvided, snapshot) => (
+                      <div
+                        ref={draggableProvided.innerRef}
+                        {...draggableProvided.draggableProps}
+                        className={cn(
+                          "group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-white",
+                          snapshot.isDragging ? "shadow-md z-[100]" : "",
+                          exp.visible === false ? "opacity-50" : ""
+                        )}
+                        onClick={() => setEditingEntryId(exp.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div {...draggableProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded touch-none">
+                            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-400" />
+                          </div>
+                          <span className="font-medium text-slate-700">
+                            {index + 1}. {exp.company || 'Enter Company'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              exp.visible === false ? "bg-slate-100 text-slate-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleEntryVisibility('experience', index);
+                            }}
+                          >
+                            {exp.visible === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            className="p-1.5 hover:bg-orange-100 rounded-md text-slate-400 hover:text-orange-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeExperience(index);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+
+                <div className="p-4 bg-slate-50/50 flex items-center justify-between text-slate-400">
+                  <Calendar className="w-5 h-5" />
+                  <button
+                    onClick={addExperience}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Entry
+                  </button>
+                  <div className="w-5 h-5 opacity-0"></div>
+                </div>
+              </div>
+            )}
+          </Droppable>
         );
 
       case 'education':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Education</h4>
-              <Button
-                onClick={addEducation}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Education</span>
-              </Button>
-            </div>
+        if (editingEntryId) {
+          const eduIndex = data.education.findIndex(e => e.id === editingEntryId);
+          const edu = data.education[eduIndex];
+          if (!edu) { setEditingEntryId(null); return null; }
 
-            {data.education.map((edu, index) => (
-              <motion.div
-                key={edu.id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.2 }}
-                className="p-4 rounded-lg border border-border/50 bg-card/30 space-y-4"
-              >
-                <div className="flex items-center justify-between">
-                  <h5 className="font-medium">Education #{index + 1}</h5>
-                  {data.education.length > 1 && (
-                    <Button
-                      onClick={() => removeEducation(index)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </Button>
-                  )}
+          return (
+            <div className="space-y-6 p-2">
+              <div className="flex items-center justify-between border-b pb-4">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wide text-xs">Edit Education</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Institution</Label>
+                  <RichTextEditor
+                    value={edu.institution}
+                    onChange={(value) => handleEducationChange(eduIndex, 'institution', value)}
+                    placeholder="University Name"
+                    minHeight="50px"
+                  />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Institution</Label>
-                    <Input
-                      value={edu.institution}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleEducationChange(index, 'institution', e.target.value)}
-                      placeholder="University Name"
-                      className="bg-background/50"
-                    />
-                  </div>
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Degree</Label>
+                  <RichTextEditor
+                    value={edu.degree}
+                    onChange={(value) => handleEducationChange(eduIndex, 'degree', value)}
+                    placeholder="Bachelor of Science"
+                    minHeight="50px"
+                  />
+                </div>
 
-                  <div className="space-y-2">
-                    <Label>Degree</Label>
-                    <Input
-                      value={edu.degree}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleEducationChange(index, 'degree', e.target.value)}
-                      placeholder="Bachelor of Science"
-                      className="bg-background/50"
-                    />
-                  </div>
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Field of Study</Label>
+                  <RichTextEditor
+                    value={edu.field}
+                    onChange={(value) => handleEducationChange(eduIndex, 'field', value)}
+                    placeholder="Computer Science"
+                    minHeight="50px"
+                  />
+                </div>
 
-                  <div className="space-y-2">
-                    <Label>Field of Study</Label>
-                    <Input
-                      value={edu.field}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleEducationChange(index, 'field', e.target.value)}
-                      placeholder="Computer Science"
-                      className="bg-background/50"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Start Year</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2 text-left">
+                    <Label className="text-[11px] font-bold text-slate-500 uppercase">Start Year</Label>
                     <Input
                       type="number"
-                      min="1900"
-                      max="2100"
                       value={edu.startYear}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleEducationChange(index, 'startYear', e.target.value)}
+                      onChange={(e) => handleEducationChange(eduIndex, 'startYear', e.target.value)}
                       placeholder="2020"
-                      className="bg-background/50"
+                      className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
                     />
                   </div>
-
-                  <div className="space-y-2">
-                    <Label>End Year</Label>
+                  <div className="space-y-2 text-left">
+                    <Label className="text-[11px] font-bold text-slate-500 uppercase">End Year</Label>
                     <Input
                       type="number"
-                      min="1900"
-                      max="2100"
                       value={edu.endYear}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleEducationChange(index, 'endYear', e.target.value)}
+                      onChange={(e) => handleEducationChange(eduIndex, 'endYear', e.target.value)}
                       placeholder="2024"
-                      className="bg-background/50"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>GPA (Optional)</Label>
-                    <Input
-                      value={edu.gpa || ''}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleEducationChange(index, 'gpa', e.target.value)}
-                      placeholder="3.8"
-                      className="bg-background/50"
+                      className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
                     />
                   </div>
                 </div>
-              </motion.div>
-            ))}
-          </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">GPA (Optional)</Label>
+                  <Input
+                    value={edu.gpa || ''}
+                    onChange={(e) => handleEducationChange(eduIndex, 'gpa', e.target.value)}
+                    placeholder="3.8"
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  onClick={() => setEditingEntryId(null)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 px-8 rounded-xl flex items-center gap-2 shadow-sm"
+                >
+                  <Check className="w-4 h-4" />
+                  Done
+                </Button>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <Droppable droppableId="entries-education" type="education">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col border rounded-xl overflow-hidden divide-y divide-slate-100"
+              >
+                {data.education.map((edu, index) => (
+                  <Draggable key={edu.id} draggableId={edu.id} index={index}>
+                    {(draggableProvided, snapshot) => (
+                      <div
+                        ref={draggableProvided.innerRef}
+                        {...draggableProvided.draggableProps}
+                        className={cn(
+                          "group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-white",
+                          snapshot.isDragging ? "shadow-md z-[100]" : "",
+                          edu.visible === false ? "opacity-50" : ""
+                        )}
+                        onClick={() => setEditingEntryId(edu.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div {...draggableProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded touch-none">
+                            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-400" />
+                          </div>
+                          <span className="font-medium text-slate-700">
+                            {index + 1}. {edu.institution || 'Enter Institution'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              edu.visible === false ? "bg-slate-100 text-slate-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleEntryVisibility('education', index);
+                            }}
+                          >
+                            {edu.visible === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            className="p-1.5 hover:bg-orange-100 rounded-md text-slate-400 hover:text-orange-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeEducation(index);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+
+                <div className="p-4 bg-slate-50/50 flex items-center justify-between text-slate-400">
+                  <GraduationCap className="w-5 h-5" />
+                  <button
+                    onClick={addEducation}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Entry
+                  </button>
+                  <div className="w-5 h-5 opacity-0"></div>
+                </div>
+              </div>
+            )}
+          </Droppable>
         );
 
       case 'skills':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Skills & Expertise</h4>
-              <Button
-                onClick={addSkill}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Skill</span>
-              </Button>
-            </div>
+        if (editingEntryId) {
+          const skillIndex = data.skills.findIndex(s => s.id === editingEntryId);
+          const skill = data.skills[skillIndex];
+          if (!skill) { setEditingEntryId(null); return null; }
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {data.skills.map((skill, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.2 }}
-                  className="p-4 rounded-lg border border-border/50 bg-card/30 space-y-3"
+          return (
+            <div className="space-y-6 p-2">
+              <div className="flex items-center justify-between border-b pb-4">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wide text-xs">Edit Skill</h3>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Skill Name</Label>
+                  <RichTextEditor
+                    value={skill.name}
+                    onChange={(value) => handleSkillChange(skillIndex, 'name', value)}
+                    placeholder="e.g. React, Project Management, etc."
+                    minHeight="80px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Proficiency Level</Label>
+                  <select
+                    value={skill.level || 'intermediate'}
+                    onChange={(e) => handleSkillChange(skillIndex, 'level', e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border-none h-11 focus:ring-2 focus:ring-orange-500/20 text-slate-700"
+                  >
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                    <option value="expert">Expert</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  onClick={() => setEditingEntryId(null)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 px-8 rounded-xl flex items-center gap-2 shadow-sm"
                 >
-                  <div className="flex items-center justify-between">
-                    <h5 className="font-medium">Skill #{index + 1}</h5>
-                    {data.skills.length > 1 && (
-                      <Button
-                        onClick={() => removeSkill(index)}
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Minus className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Skill Name</Label>
-                    <Input
-                      value={skill.name}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSkillChange(index, 'name', e.target.value)}
-                      placeholder="JavaScript, React, Python..."
-                      className="bg-background/50"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Proficiency Level (Optional)</Label>
-                    <select
-                      value={skill.level || ''}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                        const value = e.target.value;
-                        handleSkillChange(index, 'level', value === '' ? undefined : value as 'beginner' | 'intermediate' | 'advanced' | 'expert');
-                      }}
-                      className="w-full p-2 rounded-md border border-border bg-background/50"
-                    >
-                      <option value="">None</option>
-                      <option value="beginner">Beginner</option>
-                      <option value="intermediate">Intermediate</option>
-                      <option value="advanced">Advanced</option>
-                      <option value="expert">Expert</option>
-                    </select>
-                  </div>
-                </motion.div>
-              ))}
+                  <Check className="w-4 h-4" />
+                  Done
+                </Button>
+              </div>
             </div>
-          </div>
+          );
+        }
+
+        return (
+          <Droppable droppableId="entries-skills" type="skills">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col border rounded-xl overflow-hidden divide-y divide-slate-100"
+              >
+                {data.skills.map((skill, index) => (
+                  <Draggable key={skill.id} draggableId={skill.id} index={index}>
+                    {(draggableProvided, snapshot) => (
+                      <div
+                        ref={draggableProvided.innerRef}
+                        {...draggableProvided.draggableProps}
+                        className={cn(
+                          "group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-white",
+                          snapshot.isDragging ? "shadow-md z-[100]" : "",
+                          skill.visible === false ? "opacity-50" : ""
+                        )}
+                        onClick={() => setEditingEntryId(skill.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div {...draggableProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded touch-none">
+                            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-400" />
+                          </div>
+                          <span className="font-medium text-slate-700">
+                            {index + 1}. {skill.name || 'Enter Skill'}
+                          </span>
+                          {skill.level && (
+                            <span className="text-[10px] font-bold text-orange-500 uppercase tracking-widest bg-orange-50 px-2 py-0.5 rounded-full">
+                              {skill.level}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              skill.visible === false ? "bg-slate-100 text-slate-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleEntryVisibility('skills', index);
+                            }}
+                          >
+                            {skill.visible === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            className="p-1.5 hover:bg-orange-100 rounded-md text-slate-400 hover:text-orange-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeSkill(index);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+
+                <div className="p-4 bg-slate-50/50 flex items-center justify-between text-slate-400">
+                  <Code className="w-5 h-5" />
+                  <button
+                    onClick={addSkill}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Entry
+                  </button>
+                  <div className="w-5 h-5 opacity-0"></div>
+                </div>
+              </div>
+            )}
+          </Droppable>
         );
 
       case 'softSkills':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Soft Skills</h4>
-              <Button
-                onClick={addSoftSkill}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Soft Skill</span>
-              </Button>
-            </div>
+        if (editingEntryId) {
+          const skillIndex = (data.softSkills || []).findIndex(s => s.id === editingEntryId);
+          const skill = (data.softSkills || [])[skillIndex];
+          if (!skill) { setEditingEntryId(null); return null; }
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {(data.softSkills || []).map((skill, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.2 }}
-                  className="p-4 rounded-lg border border-border/50 bg-card/30 space-y-3"
+          return (
+            <div className="space-y-6 p-2">
+              <div className="flex items-center justify-between border-b pb-4">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wide text-xs">Edit Soft Skill</h3>
+              </div>
+
+              <div className="space-y-2 text-left">
+                <Label className="text-[11px] font-bold text-slate-500 uppercase">Skill Name</Label>
+                <RichTextEditor
+                  value={skill.name}
+                  onChange={(value) => handleSoftSkillChange(skillIndex, 'name', value)}
+                  placeholder="Leadership, Communication, Teamwork..."
+                  minHeight="80px"
+                />
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  onClick={() => setEditingEntryId(null)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 px-8 rounded-xl flex items-center gap-2 shadow-sm"
                 >
-                  <div className="flex items-center justify-between">
-                    <h5 className="font-medium">Soft Skill #{index + 1}</h5>
-                    {(data.softSkills || []).length > 1 && (
-                      <Button
-                        onClick={() => removeSoftSkill(index)}
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Minus className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Skill Name</Label>
-                    <Input
-                      value={skill.name}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSoftSkillChange(index, 'name', e.target.value)}
-                      placeholder="Leadership, Communication, Teamwork..."
-                      className="bg-background/50"
-                    />
-                  </div>
-                </motion.div>
-              ))}
+                  <Check className="w-4 h-4" />
+                  Done
+                </Button>
+              </div>
             </div>
-          </div>
+          );
+        }
+
+        return (
+          <Droppable droppableId="entries-softSkills" type="softSkills">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col border rounded-xl overflow-hidden divide-y divide-slate-100"
+              >
+                {(data.softSkills || []).map((skill, index) => (
+                  <Draggable key={skill.id} draggableId={skill.id} index={index}>
+                    {(draggableProvided, snapshot) => (
+                      <div
+                        ref={draggableProvided.innerRef}
+                        {...draggableProvided.draggableProps}
+                        className={cn(
+                          "group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-white",
+                          snapshot.isDragging ? "shadow-md z-[100]" : "",
+                          skill.visible === false ? "opacity-50" : ""
+                        )}
+                        onClick={() => setEditingEntryId(skill.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div {...draggableProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded touch-none">
+                            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-400" />
+                          </div>
+                          <span className="font-medium text-slate-700">
+                            {index + 1}. {skill.name || 'Enter Soft Skill'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              skill.visible === false ? "bg-slate-100 text-slate-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleEntryVisibility('softSkills', index);
+                            }}
+                          >
+                            {skill.visible === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            className="p-1.5 hover:bg-orange-100 rounded-md text-slate-400 hover:text-orange-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeSoftSkill(index);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+                <div className="p-4 bg-slate-50/50 flex items-center justify-between text-slate-400">
+                  <Heart className="w-5 h-5" />
+                  <button
+                    onClick={addSoftSkill}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Entry
+                  </button>
+                  <div className="w-5 h-5 opacity-0"></div>
+                </div>
+              </div>
+            )}
+          </Droppable>
         );
 
       case 'certificates':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Certificates</h4>
-              <Button
-                onClick={addCertificate}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Certificate</span>
-              </Button>
-            </div>
+        if (editingEntryId) {
+          const certIndex = (data.certificates || []).findIndex(c => c.id === editingEntryId);
+          const cert = (data.certificates || [])[certIndex];
+          if (!cert) { setEditingEntryId(null); return null; }
 
-            <div className="space-y-4">
-              {(data.certificates || []).map((cert, index) => (
-                <motion.div
-                  key={cert.id}
-                  className="p-4 rounded-xl border bg-background/50"
-                  layout
+          return (
+            <div className="space-y-6 p-2">
+              <div className="flex items-center justify-between border-b pb-4">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wide text-xs">Edit Certificate</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Certificate Name</Label>
+                  <RichTextEditor
+                    value={cert.name}
+                    onChange={(value) => handleCertificateChange(certIndex, 'name', value)}
+                    placeholder="AWS Cloud Practitioner"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Issuing Organization</Label>
+                  <RichTextEditor
+                    value={cert.organization}
+                    onChange={(value) => handleCertificateChange(certIndex, 'organization', value)}
+                    placeholder="Amazon Web Services"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Issue Date</Label>
+                  <Input
+                    type="date"
+                    value={cert.issueDate}
+                    onChange={(e) => handleCertificateChange(certIndex, 'issueDate', e.target.value)}
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Expiry Date (Optional)</Label>
+                  <Input
+                    type="date"
+                    value={cert.expiryDate || ''}
+                    onChange={(e) => handleCertificateChange(certIndex, 'expiryDate', e.target.value)}
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left md:col-span-2">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Certificate ID/URL (Optional)</Label>
+                  <Input
+                    value={cert.certificateId || ''}
+                    onChange={(e) => handleCertificateChange(certIndex, 'certificateId', e.target.value)}
+                    placeholder="Certificate URL or ID"
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  onClick={() => setEditingEntryId(null)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 px-8 rounded-xl flex items-center gap-2 shadow-sm"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <h5 className="font-medium">Certificate {index + 1}</h5>
-                    <Button
-                      onClick={() => removeCertificate(index)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Certificate Name</Label>
-                      <Input
-                        value={cert.name}
-                        onChange={(e) => handleCertificateChange(index, 'name', e.target.value)}
-                        placeholder="AWS Cloud Practitioner"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Issuing Organization</Label>
-                      <Input
-                        value={cert.organization}
-                        onChange={(e) => handleCertificateChange(index, 'organization', e.target.value)}
-                        placeholder="Amazon Web Services"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Issue Date</Label>
-                      <Input
-                        type="date"
-                        value={cert.issueDate}
-                        onChange={(e) => handleCertificateChange(index, 'issueDate', e.target.value)}
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Expiry Date (Optional)</Label>
-                      <Input
-                        type="date"
-                        value={cert.expiryDate || ''}
-                        onChange={(e) => handleCertificateChange(index, 'expiryDate', e.target.value)}
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Certificate ID/URL (Optional)</Label>
-                      <Input
-                        value={cert.certificateId || ''}
-                        onChange={(e) => handleCertificateChange(index, 'certificateId', e.target.value)}
-                        placeholder="Certificate URL or ID"
-                        className="bg-background/50"
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+                  <Check className="w-4 h-4" />
+                  Done
+                </Button>
+              </div>
             </div>
-          </div>
+          );
+        }
+
+        return (
+          <Droppable droppableId="entries-certificates" type="certificates">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col border rounded-xl overflow-hidden divide-y divide-slate-100"
+              >
+                {(data.certificates || []).map((cert, index) => (
+                  <Draggable key={cert.id} draggableId={cert.id} index={index}>
+                    {(draggableProvided, snapshot) => (
+                      <div
+                        ref={draggableProvided.innerRef}
+                        {...draggableProvided.draggableProps}
+                        className={cn(
+                          "group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-white",
+                          snapshot.isDragging ? "shadow-md z-[100]" : "",
+                          cert.visible === false ? "opacity-50" : ""
+                        )}
+                        onClick={() => setEditingEntryId(cert.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div {...draggableProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded touch-none">
+                            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-400" />
+                          </div>
+                          <span className="font-medium text-slate-700">
+                            {index + 1}. {cert.name || 'Enter Certificate'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              cert.visible === false ? "bg-slate-100 text-slate-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleEntryVisibility('certificates', index);
+                            }}
+                          >
+                            {cert.visible === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            className="p-1.5 hover:bg-orange-100 rounded-md text-slate-400 hover:text-orange-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeCertificate(index);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+                <div className="p-4 bg-slate-50/50 flex items-center justify-between text-slate-400">
+                  <Shield className="w-5 h-5" />
+                  <button
+                    onClick={addCertificate}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Entry
+                  </button>
+                  <div className="w-5 h-5 opacity-0"></div>
+                </div>
+              </div>
+            )}
+          </Droppable>
         );
 
       case 'interests':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Interests</h4>
-              <Button
-                onClick={addInterest}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Interest</span>
-              </Button>
-            </div>
+        if (editingEntryId) {
+          const interestIndex = (data.interests || []).findIndex(i => i.id === editingEntryId);
+          const interest = (data.interests || [])[interestIndex];
+          if (!interest) { setEditingEntryId(null); return null; }
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(data.interests || []).map((interest, index) => (
-                <motion.div
-                  key={interest.id}
-                  className="p-4 rounded-xl border bg-background/50"
-                  layout
+          return (
+            <div className="space-y-6 p-2">
+              <div className="flex items-center justify-between border-b pb-4">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wide text-xs">Edit Interest</h3>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6">
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Interest Name</Label>
+                  <RichTextEditor
+                    value={interest.name}
+                    onChange={(value) => handleInterestChange(interestIndex, 'name', value)}
+                    placeholder="Photography"
+                    minHeight="80px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Description (Optional)</Label>
+                  <RichTextEditor
+                    value={interest.description || ''}
+                    onChange={(value) => handleInterestChange(interestIndex, 'description', value)}
+                    placeholder="Brief description of your interest"
+                    minHeight="120px"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  onClick={() => setEditingEntryId(null)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 px-8 rounded-xl flex items-center gap-2 shadow-sm"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <h5 className="font-medium">Interest {index + 1}</h5>
-                    <Button
-                      onClick={() => removeInterest(index)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Interest Name</Label>
-                      <Input
-                        value={interest.name}
-                        onChange={(e) => handleInterestChange(index, 'name', e.target.value)}
-                        placeholder="Photography"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Description (Optional)</Label>
-                      <Textarea
-                        value={interest.description || ''}
-                        onChange={(e) => handleInterestChange(index, 'description', e.target.value)}
-                        placeholder="Brief description of your interest"
-                        className="bg-background/50"
-                        rows={3}
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+                  <Check className="w-4 h-4" />
+                  Done
+                </Button>
+              </div>
             </div>
-          </div>
+          );
+        }
+
+        return (
+          <Droppable droppableId="entries-interests" type="interests">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col border rounded-xl overflow-hidden divide-y divide-slate-100"
+              >
+                {(data.interests || []).map((interest, index) => (
+                  <Draggable key={interest.id} draggableId={interest.id} index={index}>
+                    {(draggableProvided, snapshot) => (
+                      <div
+                        ref={draggableProvided.innerRef}
+                        {...draggableProvided.draggableProps}
+                        className={cn(
+                          "group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-white",
+                          snapshot.isDragging ? "shadow-md z-[100]" : "",
+                          interest.visible === false ? "opacity-50" : ""
+                        )}
+                        onClick={() => setEditingEntryId(interest.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div {...draggableProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded touch-none">
+                            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-400" />
+                          </div>
+                          <span className="font-medium text-slate-700">
+                            {index + 1}. {interest.name || 'Enter Interest'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              interest.visible === false ? "bg-slate-100 text-slate-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleEntryVisibility('interests', index);
+                            }}
+                          >
+                            {interest.visible === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            className="p-1.5 hover:bg-orange-100 rounded-md text-slate-400 hover:text-orange-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeInterest(index);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+                <div className="p-4 bg-slate-50/50 flex items-center justify-between text-slate-400">
+                  <Heart className="w-5 h-5" />
+                  <button
+                    onClick={addInterest}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Entry
+                  </button>
+                  <div className="w-5 h-5 opacity-0"></div>
+                </div>
+              </div>
+            )}
+          </Droppable>
         );
 
       case 'projects':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Projects</h4>
-              <Button
-                onClick={addProject}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Project</span>
-              </Button>
-            </div>
+        if (editingEntryId) {
+          const projIndex = (data.projects || []).findIndex(p => p.id === editingEntryId);
+          const proj = (data.projects || [])[projIndex];
+          if (!proj) { setEditingEntryId(null); return null; }
 
-            <div className="space-y-4">
-              {(data.projects || []).map((project, index) => (
-                <motion.div
-                  key={project.id}
-                  className="p-4 rounded-xl border bg-background/50"
-                  layout
+          return (
+            <div className="space-y-6 p-2">
+              <div className="flex items-center justify-between border-b pb-4">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wide text-xs">Edit Project</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2 text-left md:col-span-2">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Project Title</Label>
+                  <RichTextEditor
+                    value={proj.title}
+                    onChange={(value) => handleProjectChange(projIndex, 'title', value)}
+                    placeholder="E-commerce Platform"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Role (Optional)</Label>
+                  <RichTextEditor
+                    value={proj.role || ''}
+                    onChange={(value) => handleProjectChange(projIndex, 'role', value)}
+                    placeholder="Lead Developer"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Technologies</Label>
+                  <RichTextEditor
+                    value={proj.technologies || ''}
+                    onChange={(value) => handleProjectChange(projIndex, 'technologies', value)}
+                    placeholder="React, Node.js, PostgreSQL"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Start Date</Label>
+                  <Input
+                    type="month"
+                    value={proj.startDate}
+                    onChange={(e) => handleProjectChange(projIndex, 'startDate', e.target.value)}
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">End Date</Label>
+                  <Input
+                    type="month"
+                    value={proj.endDate}
+                    onChange={(e) => handleProjectChange(projIndex, 'endDate', e.target.value)}
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 text-left">
+                <Label className="text-[11px] font-bold text-slate-500 uppercase">Description</Label>
+                <RichTextEditor
+                  value={proj.description || ''}
+                  onChange={(value) => handleProjectChange(projIndex, 'description', value)}
+                  placeholder="Describe the project goals and your contributions..."
+                  minHeight="200px"
+                />
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  onClick={() => setEditingEntryId(null)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 px-8 rounded-xl flex items-center gap-2 shadow-sm"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <h5 className="font-medium">Project {index + 1}</h5>
-                    <Button
-                      onClick={() => removeProject(index)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Project Title</Label>
-                      <Input
-                        value={project.title}
-                        onChange={(e) => handleProjectChange(index, 'title', e.target.value)}
-                        placeholder="E-commerce Website"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Your Role</Label>
-                      <Input
-                        value={project.role || ''}
-                        onChange={(e) => handleProjectChange(index, 'role', e.target.value)}
-                        placeholder="Full Stack Developer"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Start Date</Label>
-                      <Input
-                        type="month"
-                        value={project.startDate}
-                        onChange={(e) => handleProjectChange(index, 'startDate', e.target.value)}
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>End Date</Label>
-                      <Input
-                        type="month"
-                        value={project.endDate}
-                        onChange={(e) => handleProjectChange(index, 'endDate', e.target.value)}
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Technologies Used</Label>
-                      <Input
-                        value={project.technologies || ''}
-                        onChange={(e) => handleProjectChange(index, 'technologies', e.target.value)}
-                        placeholder="React, Node.js, MongoDB"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Description</Label>
-                      <RichTextEditor
-                        value={project.description || ''}
-                        onChange={(value) => handleProjectChange(index, 'description', value)}
-                        placeholder="Describe the project and your achievements"
-                        minHeight="150px"
-                      />
-                    </div>
-
-                  </div>
-                </motion.div>
-              ))}
+                  <Check className="w-4 h-4" />
+                  Done
+                </Button>
+              </div>
             </div>
-          </div>
+          );
+        }
+
+        return (
+          <Droppable droppableId="entries-projects" type="projects">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col border rounded-xl overflow-hidden divide-y divide-slate-100"
+              >
+                {(data.projects || []).map((proj, index) => (
+                  <Draggable key={proj.id} draggableId={proj.id} index={index}>
+                    {(draggableProvided, snapshot) => (
+                      <div
+                        ref={draggableProvided.innerRef}
+                        {...draggableProvided.draggableProps}
+                        className={cn(
+                          "group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-white",
+                          snapshot.isDragging ? "shadow-md z-[100]" : "",
+                          proj.visible === false ? "opacity-50" : ""
+                        )}
+                        onClick={() => setEditingEntryId(proj.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div {...draggableProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded touch-none">
+                            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-400" />
+                          </div>
+                          <span className="font-medium text-slate-700">
+                            {index + 1}. {proj.title || 'Enter Project Title'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              proj.visible === false ? "bg-slate-100 text-slate-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleEntryVisibility('projects', index);
+                            }}
+                          >
+                            {proj.visible === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            className="p-1.5 hover:bg-orange-100 rounded-md text-slate-400 hover:text-orange-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeProject(index);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+
+                <div className="p-4 bg-slate-50/50 flex items-center justify-between text-slate-400">
+                  <FolderOpen className="w-5 h-5" />
+                  <button
+                    onClick={addProject}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Entry
+                  </button>
+                  <div className="w-5 h-5 opacity-0"></div>
+                </div>
+              </div>
+            )}
+          </Droppable>
         );
 
       case 'courses':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Courses</h4>
-              <Button
-                onClick={addCourse}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Course</span>
-              </Button>
-            </div>
+        if (editingEntryId) {
+          const courseIndex = (data.courses || []).findIndex(c => c.id === editingEntryId);
+          const course = (data.courses || [])[courseIndex];
+          if (!course) { setEditingEntryId(null); return null; }
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(data.courses || []).map((course, index) => (
-                <motion.div
-                  key={course.id}
-                  className="p-4 rounded-xl border bg-background/50"
-                  layout
+          return (
+            <div className="space-y-6 p-2">
+              <div className="flex items-center justify-between border-b pb-4">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wide text-xs">Edit Course</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Course Name</Label>
+                  <RichTextEditor
+                    value={course.name}
+                    onChange={(value) => handleCourseChange(courseIndex, 'name', value)}
+                    placeholder="Machine Learning Specialization"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Provider/Institution</Label>
+                  <RichTextEditor
+                    value={course.provider || ''}
+                    onChange={(value) => handleCourseChange(courseIndex, 'provider', value)}
+                    placeholder="Coursera, Stanford University"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Completion Date</Label>
+                  <Input
+                    type="date"
+                    value={course.completionDate}
+                    onChange={(e) => handleCourseChange(courseIndex, 'completionDate', e.target.value)}
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 text-left">
+                <Label className="text-[11px] font-bold text-slate-500 uppercase">Description (Optional)</Label>
+                <RichTextEditor
+                  value={course.description || ''}
+                  onChange={(value) => handleCourseChange(courseIndex, 'description', value)}
+                  placeholder="What did you learn?"
+                  minHeight="150px"
+                />
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  onClick={() => setEditingEntryId(null)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 px-8 rounded-xl flex items-center gap-2 shadow-sm"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <h5 className="font-medium">Course {index + 1}</h5>
-                    <Button
-                      onClick={() => removeCourse(index)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Course Name</Label>
-                      <Input
-                        value={course.name}
-                        onChange={(e) => handleCourseChange(index, 'name', e.target.value)}
-                        placeholder="Machine Learning Specialization"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Provider/Institution</Label>
-                      <Input
-                        value={course.provider || ''}
-                        onChange={(e) => handleCourseChange(index, 'provider', e.target.value)}
-                        placeholder="Coursera, Stanford University"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Completion Date</Label>
-                      <Input
-                        type="date"
-                        value={course.completionDate}
-                        onChange={(e) => handleCourseChange(index, 'completionDate', e.target.value)}
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Description (Optional)</Label>
-                      <RichTextEditor
-                        value={course.description || ''}
-                        onChange={(value) => handleCourseChange(index, 'description', value)}
-                        placeholder="What did you learn?"
-                        minHeight="120px"
-                      />
-                    </div>
-
-                  </div>
-                </motion.div>
-              ))}
+                  <Check className="w-4 h-4" />
+                  Done
+                </Button>
+              </div>
             </div>
-          </div>
+          );
+        }
+
+        return (
+          <Droppable droppableId="entries-courses" type="courses">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col border rounded-xl overflow-hidden divide-y divide-slate-100"
+              >
+                {(data.courses || []).map((course, index) => (
+                  <Draggable key={course.id} draggableId={course.id} index={index}>
+                    {(draggableProvided, snapshot) => (
+                      <div
+                        ref={draggableProvided.innerRef}
+                        {...draggableProvided.draggableProps}
+                        className={cn(
+                          "group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-white",
+                          snapshot.isDragging ? "shadow-md z-[100]" : "",
+                          course.visible === false ? "opacity-50" : ""
+                        )}
+                        onClick={() => setEditingEntryId(course.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div {...draggableProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded touch-none">
+                            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-400" />
+                          </div>
+                          <span className="font-medium text-slate-700">
+                            {index + 1}. {course.name || 'Enter Course Name'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              course.visible === false ? "bg-slate-100 text-slate-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleEntryVisibility('courses', index);
+                            }}
+                          >
+                            {course.visible === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            className="p-1.5 hover:bg-orange-100 rounded-md text-slate-400 hover:text-orange-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeCourse(index);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+                <div className="p-4 bg-slate-50/50 flex items-center justify-between text-slate-400">
+                  <BookOpen className="w-5 h-5" />
+                  <button
+                    onClick={addCourse}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Entry
+                  </button>
+                  <div className="w-5 h-5 opacity-0"></div>
+                </div>
+              </div>
+            )}
+          </Droppable>
         );
 
       case 'awards':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Awards</h4>
-              <Button
-                onClick={addAward}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Award</span>
-              </Button>
-            </div>
+        if (editingEntryId) {
+          const awardIndex = (data.awards || []).findIndex(a => a.id === editingEntryId);
+          const award = (data.awards || [])[awardIndex];
+          if (!award) { setEditingEntryId(null); return null; }
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(data.awards || []).map((award, index) => (
-                <motion.div
-                  key={award.id}
-                  className="p-4 rounded-xl border bg-background/50"
-                  layout
+          return (
+            <div className="space-y-6 p-2">
+              <div className="flex items-center justify-between border-b pb-4">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wide text-xs">Edit Award</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Award Title</Label>
+                  <RichTextEditor
+                    value={award.title}
+                    onChange={(value) => handleAwardChange(awardIndex, 'title', value)}
+                    placeholder="Employee of the Month"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Issuing Organization</Label>
+                  <RichTextEditor
+                    value={award.organization || ''}
+                    onChange={(value) => handleAwardChange(awardIndex, 'organization', value)}
+                    placeholder="Company Name"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Date Received</Label>
+                  <Input
+                    type="date"
+                    value={award.date}
+                    onChange={(e) => handleAwardChange(awardIndex, 'date', e.target.value)}
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 text-left">
+                <Label className="text-[11px] font-bold text-slate-500 uppercase">Description/Reason</Label>
+                <RichTextEditor
+                  value={award.description || ''}
+                  onChange={(value) => handleAwardChange(awardIndex, 'description', value)}
+                  placeholder="Why did you receive this award?"
+                  minHeight="150px"
+                />
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  onClick={() => setEditingEntryId(null)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 px-8 rounded-xl flex items-center gap-2 shadow-sm"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <h5 className="font-medium">Award {index + 1}</h5>
-                    <Button
-                      onClick={() => removeAward(index)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Award Title</Label>
-                      <Input
-                        value={award.title}
-                        onChange={(e) => handleAwardChange(index, 'title', e.target.value)}
-                        placeholder="Employee of the Month"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Issuing Organization</Label>
-                      <Input
-                        value={award.organization || ''}
-                        onChange={(e) => handleAwardChange(index, 'organization', e.target.value)}
-                        placeholder="Company Name"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Date Received</Label>
-                      <Input
-                        type="date"
-                        value={award.date}
-                        onChange={(e) => handleAwardChange(index, 'date', e.target.value)}
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Description/Reason</Label>
-                      <RichTextEditor
-                        value={award.description || ''}
-                        onChange={(value) => handleAwardChange(index, 'description', value)}
-                        placeholder="Why did you receive this award?"
-                        minHeight="120px"
-                      />
-                    </div>
-
-                  </div>
-                </motion.div>
-              ))}
+                  <Check className="w-4 h-4" />
+                  Done
+                </Button>
+              </div>
             </div>
-          </div>
+          );
+        }
+
+        return (
+          <Droppable droppableId="entries-awards" type="awards">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col border rounded-xl overflow-hidden divide-y divide-slate-100"
+              >
+                {(data.awards || []).map((award, index) => (
+                  <Draggable key={award.id} draggableId={award.id} index={index}>
+                    {(draggableProvided, snapshot) => (
+                      <div
+                        ref={draggableProvided.innerRef}
+                        {...draggableProvided.draggableProps}
+                        className={cn(
+                          "group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-white",
+                          snapshot.isDragging ? "shadow-md z-[100]" : "",
+                          award.visible === false ? "opacity-50" : ""
+                        )}
+                        onClick={() => setEditingEntryId(award.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div {...draggableProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded touch-none">
+                            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-400" />
+                          </div>
+                          <span className="font-medium text-slate-700">
+                            {index + 1}. {award.title || 'Enter Award Title'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              award.visible === false ? "bg-slate-100 text-slate-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleEntryVisibility('awards', index);
+                            }}
+                          >
+                            {award.visible === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            className="p-1.5 hover:bg-orange-100 rounded-md text-slate-400 hover:text-orange-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeAward(index);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+                <div className="p-4 bg-slate-50/50 flex items-center justify-between text-slate-400">
+                  <AwardIcon className="w-5 h-5" />
+                  <button
+                    onClick={addAward}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Entry
+                  </button>
+                  <div className="w-5 h-5 opacity-0"></div>
+                </div>
+              </div>
+            )}
+          </Droppable>
         );
 
       case 'organisations':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Organisations</h4>
-              <Button
-                onClick={addOrganisation}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Organisation</span>
-              </Button>
-            </div>
+        if (editingEntryId) {
+          const orgIndex = (data.organisations || []).findIndex(o => o.id === editingEntryId);
+          const org = (data.organisations || [])[orgIndex];
+          if (!org) { setEditingEntryId(null); return null; }
 
-            <div className="space-y-4">
-              {(data.organisations || []).map((org, index) => (
-                <motion.div
-                  key={org.id}
-                  className="p-4 rounded-xl border bg-background/50"
-                  layout
+          return (
+            <div className="space-y-6 p-2">
+              <div className="flex items-center justify-between border-b pb-4">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wide text-xs">Edit Organisation</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Organisation Name</Label>
+                  <RichTextEditor
+                    value={org.name}
+                    onChange={(value) => handleOrganisationChange(orgIndex, 'name', value)}
+                    placeholder="Red Cross"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Role/Position</Label>
+                  <RichTextEditor
+                    value={org.role || ''}
+                    onChange={(value) => handleOrganisationChange(orgIndex, 'role', value)}
+                    placeholder="Volunteer"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Start Date</Label>
+                  <Input
+                    type="month"
+                    value={org.startDate}
+                    onChange={(e) => handleOrganisationChange(orgIndex, 'startDate', e.target.value)}
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">End Date</Label>
+                  <Input
+                    type="month"
+                    value={org.endDate}
+                    onChange={(e) => handleOrganisationChange(orgIndex, 'endDate', e.target.value)}
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 text-left">
+                <Label className="text-[11px] font-bold text-slate-500 uppercase">Description/Contribution</Label>
+                <RichTextEditor
+                  value={org.description || ''}
+                  onChange={(value) => handleOrganisationChange(orgIndex, 'description', value)}
+                  placeholder="Describe your role and contributions"
+                  minHeight="200px"
+                />
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  onClick={() => setEditingEntryId(null)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 px-8 rounded-xl flex items-center gap-2 shadow-sm"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <h5 className="font-medium">Organisation {index + 1}</h5>
-                    <Button
-                      onClick={() => removeOrganisation(index)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Organisation Name</Label>
-                      <Input
-                        value={org.name}
-                        onChange={(e) => handleOrganisationChange(index, 'name', e.target.value)}
-                        placeholder="Red Cross"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Role/Position</Label>
-                      <Input
-                        value={org.role || ''}
-                        onChange={(e) => handleOrganisationChange(index, 'role', e.target.value)}
-                        placeholder="Volunteer"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Start Date</Label>
-                      <Input
-                        type="month"
-                        value={org.startDate}
-                        onChange={(e) => handleOrganisationChange(index, 'startDate', e.target.value)}
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>End Date</Label>
-                      <Input
-                        type="month"
-                        value={org.endDate}
-                        onChange={(e) => handleOrganisationChange(index, 'endDate', e.target.value)}
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Description/Contribution</Label>
-                      <RichTextEditor
-                        value={org.description || ''}
-                        onChange={(value) => handleOrganisationChange(index, 'description', value)}
-                        placeholder="Describe your role and contributions"
-                        minHeight="150px"
-                      />
-                    </div>
-
-                  </div>
-                </motion.div>
-              ))}
+                  <Check className="w-4 h-4" />
+                  Done
+                </Button>
+              </div>
             </div>
-          </div>
+          );
+        }
+
+        return (
+          <Droppable droppableId="entries-organisations" type="organisations">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col border rounded-xl overflow-hidden divide-y divide-slate-100"
+              >
+                {(data.organisations || []).map((org, index) => (
+                  <Draggable key={org.id} draggableId={org.id} index={index}>
+                    {(draggableProvided, snapshot) => (
+                      <div
+                        ref={draggableProvided.innerRef}
+                        {...draggableProvided.draggableProps}
+                        className={cn(
+                          "group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-white",
+                          snapshot.isDragging ? "shadow-md z-[100]" : "",
+                          org.visible === false ? "opacity-50" : ""
+                        )}
+                        onClick={() => setEditingEntryId(org.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div {...draggableProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded touch-none">
+                            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-400" />
+                          </div>
+                          <span className="font-medium text-slate-700">
+                            {index + 1}. {org.name || 'Enter Organisation Name'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              org.visible === false ? "bg-slate-100 text-slate-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleEntryVisibility('organisations', index);
+                            }}
+                          >
+                            {org.visible === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            className="p-1.5 hover:bg-orange-100 rounded-md text-slate-400 hover:text-orange-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeOrganisation(index);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+                <div className="p-4 bg-slate-50/50 flex items-center justify-between text-slate-400">
+                  <Users className="w-5 h-5" />
+                  <button
+                    onClick={addOrganisation}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Entry
+                  </button>
+                  <div className="w-5 h-5 opacity-0"></div>
+                </div>
+              </div>
+            )}
+          </Droppable>
         );
 
       case 'publications':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Publications</h4>
-              <Button
-                onClick={addPublication}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Publication</span>
-              </Button>
-            </div>
+        if (editingEntryId) {
+          const pubIndex = (data.publications || []).findIndex(p => p.id === editingEntryId);
+          const pub = (data.publications || [])[pubIndex];
+          if (!pub) { setEditingEntryId(null); return null; }
 
-            <div className="space-y-4">
-              {(data.publications || []).map((pub, index) => (
-                <motion.div
-                  key={pub.id}
-                  className="p-4 rounded-xl border bg-background/50"
-                  layout
+          return (
+            <div className="space-y-6 p-2">
+              <div className="flex items-center justify-between border-b pb-4">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wide text-xs">Edit Publication</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2 text-left md:col-span-2">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Title</Label>
+                  <RichTextEditor
+                    value={pub.title}
+                    onChange={(value) => handlePublicationChange(pubIndex, 'title', value)}
+                    placeholder="Research Paper Title"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Publication Type</Label>
+                  <Input
+                    value={pub.type || ''}
+                    onChange={(e) => handlePublicationChange(pubIndex, 'type', e.target.value)}
+                    placeholder="Journal, Conference, Book"
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Date</Label>
+                  <Input
+                    type="date"
+                    value={pub.date}
+                    onChange={(e) => handlePublicationChange(pubIndex, 'date', e.target.value)}
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Publisher</Label>
+                  <RichTextEditor
+                    value={pub.publisher || ''}
+                    onChange={(value) => handlePublicationChange(pubIndex, 'publisher', value)}
+                    placeholder="Publisher Name"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">URL/DOI (Optional)</Label>
+                  <Input
+                    value={pub.url || ''}
+                    onChange={(e) => handlePublicationChange(pubIndex, 'url', e.target.value)}
+                    placeholder="https://doi.org/..."
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 text-left">
+                <Label className="text-[11px] font-bold text-slate-500 uppercase">Description/Abstract</Label>
+                <RichTextEditor
+                  value={pub.description || ''}
+                  onChange={(value) => handlePublicationChange(pubIndex, 'description', value)}
+                  placeholder="Brief description or abstract"
+                  minHeight="200px"
+                />
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  onClick={() => setEditingEntryId(null)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 px-8 rounded-xl flex items-center gap-2 shadow-sm"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <h5 className="font-medium">Publication {index + 1}</h5>
-                    <Button
-                      onClick={() => removePublication(index)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Title</Label>
-                      <Input
-                        value={pub.title}
-                        onChange={(e) => handlePublicationChange(index, 'title', e.target.value)}
-                        placeholder="Research Paper Title"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Publication Type</Label>
-                      <Input
-                        value={pub.type || ''}
-                        onChange={(e) => handlePublicationChange(index, 'type', e.target.value)}
-                        placeholder="Journal, Conference, Book"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Date</Label>
-                      <Input
-                        type="date"
-                        value={pub.date}
-                        onChange={(e) => handlePublicationChange(index, 'date', e.target.value)}
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Publisher</Label>
-                      <Input
-                        value={pub.publisher || ''}
-                        onChange={(e) => handlePublicationChange(index, 'publisher', e.target.value)}
-                        placeholder="Publisher Name"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>URL/DOI (Optional)</Label>
-                      <Input
-                        value={pub.url || ''}
-                        onChange={(e) => handlePublicationChange(index, 'url', e.target.value)}
-                        placeholder="https://doi.org/..."
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Description/Abstract</Label>
-                      <RichTextEditor
-                        value={pub.description || ''}
-                        onChange={(value) => handlePublicationChange(index, 'description', value)}
-                        placeholder="Brief description or abstract"
-                        minHeight="150px"
-                      />
-                    </div>
-
-                  </div>
-                </motion.div>
-              ))}
+                  <Check className="w-4 h-4" />
+                  Done
+                </Button>
+              </div>
             </div>
-          </div>
+          );
+        }
+
+        return (
+          <Droppable droppableId="entries-publications" type="publications">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col border rounded-xl overflow-hidden divide-y divide-slate-100"
+              >
+                {(data.publications || []).map((pub, index) => (
+                  <Draggable key={pub.id} draggableId={pub.id} index={index}>
+                    {(draggableProvided, snapshot) => (
+                      <div
+                        ref={draggableProvided.innerRef}
+                        {...draggableProvided.draggableProps}
+                        className={cn(
+                          "group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-white",
+                          snapshot.isDragging ? "shadow-md z-[100]" : "",
+                          pub.visible === false ? "opacity-50" : ""
+                        )}
+                        onClick={() => setEditingEntryId(pub.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div {...draggableProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded touch-none">
+                            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-400" />
+                          </div>
+                          <span className="font-medium text-slate-700">
+                            {index + 1}. {pub.title || 'Enter Publication Title'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              pub.visible === false ? "bg-slate-100 text-slate-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleEntryVisibility('publications', index);
+                            }}
+                          >
+                            {pub.visible === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            className="p-1.5 hover:bg-orange-100 rounded-md text-slate-400 hover:text-orange-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removePublication(index);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+                <div className="p-4 bg-slate-50/50 flex items-center justify-between text-slate-400">
+                  <FileText className="w-5 h-5" />
+                  <button
+                    onClick={addPublication}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Entry
+                  </button>
+                  <div className="w-5 h-5 opacity-0"></div>
+                </div>
+              </div>
+            )}
+          </Droppable>
         );
 
       case 'references':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">References</h4>
-              <Button
-                onClick={addReference}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Reference</span>
-              </Button>
-            </div>
+        if (editingEntryId) {
+          const refIndex = (data.references || []).findIndex(r => r.id === editingEntryId);
+          const ref = (data.references || [])[refIndex];
+          if (!ref) { setEditingEntryId(null); return null; }
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(data.references || []).map((ref, index) => (
-                <motion.div
-                  key={ref.id}
-                  className="p-4 rounded-xl border bg-background/50"
-                  layout
+          return (
+            <div className="space-y-6 p-2">
+              <div className="flex items-center justify-between border-b pb-4">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wide text-xs">Edit Reference</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Name</Label>
+                  <RichTextEditor
+                    value={ref.name}
+                    onChange={(value) => handleReferenceChange(refIndex, 'name', value)}
+                    placeholder="John Smith"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Position/Relationship</Label>
+                  <RichTextEditor
+                    value={ref.position || ''}
+                    onChange={(value) => handleReferenceChange(refIndex, 'position', value)}
+                    placeholder="Former Manager"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Company/Organization</Label>
+                  <RichTextEditor
+                    value={ref.company || ''}
+                    onChange={(value) => handleReferenceChange(refIndex, 'company', value)}
+                    placeholder="Company Name"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Email</Label>
+                  <Input
+                    type="email"
+                    value={ref.email || ''}
+                    onChange={(e) => handleReferenceChange(refIndex, 'email', e.target.value)}
+                    placeholder="john@company.com"
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Phone (Optional)</Label>
+                  <Input
+                    type="tel"
+                    value={ref.phone || ''}
+                    onChange={(e) => handleReferenceChange(refIndex, 'phone', e.target.value)}
+                    placeholder="+1 (555) 123-4567"
+                    className="bg-slate-50 border-none h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-orange-500/20"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  onClick={() => setEditingEntryId(null)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 px-8 rounded-xl flex items-center gap-2 shadow-sm"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <h5 className="font-medium">Reference {index + 1}</h5>
-                    <Button
-                      onClick={() => removeReference(index)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Name</Label>
-                      <Input
-                        value={ref.name}
-                        onChange={(e) => handleReferenceChange(index, 'name', e.target.value)}
-                        placeholder="John Smith"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Position/Relationship</Label>
-                      <Input
-                        value={ref.position || ''}
-                        onChange={(e) => handleReferenceChange(index, 'position', e.target.value)}
-                        placeholder="Former Manager"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Company/Organization</Label>
-                      <Input
-                        value={ref.company || ''}
-                        onChange={(e) => handleReferenceChange(index, 'company', e.target.value)}
-                        placeholder="Company Name"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Email</Label>
-                      <Input
-                        type="email"
-                        value={ref.email || ''}
-                        onChange={(e) => handleReferenceChange(index, 'email', e.target.value)}
-                        placeholder="john@company.com"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Phone (Optional)</Label>
-                      <Input
-                        type="tel"
-                        value={ref.phone || ''}
-                        onChange={(e) => handleReferenceChange(index, 'phone', e.target.value)}
-                        placeholder="+1 (555) 123-4567"
-                        className="bg-background/50"
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+                  <Check className="w-4 h-4" />
+                  Done
+                </Button>
+              </div>
             </div>
-          </div>
+          );
+        }
+
+        return (
+          <Droppable droppableId="entries-references" type="references">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col border rounded-xl overflow-hidden divide-y divide-slate-100"
+              >
+                {(data.references || []).map((ref, index) => (
+                  <Draggable key={ref.id} draggableId={ref.id} index={index}>
+                    {(draggableProvided, snapshot) => (
+                      <div
+                        ref={draggableProvided.innerRef}
+                        {...draggableProvided.draggableProps}
+                        className={cn(
+                          "group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-white",
+                          snapshot.isDragging ? "shadow-md z-[100]" : "",
+                          ref.visible === false ? "opacity-50" : ""
+                        )}
+                        onClick={() => setEditingEntryId(ref.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div {...draggableProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded touch-none">
+                            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-400" />
+                          </div>
+                          <span className="font-medium text-slate-700">
+                            {index + 1}. {ref.name || 'Enter Reference Name'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              ref.visible === false ? "bg-slate-100 text-slate-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleEntryVisibility('references', index);
+                            }}
+                          >
+                            {ref.visible === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            className="p-1.5 hover:bg-orange-100 rounded-md text-slate-400 hover:text-orange-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeReference(index);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+                <div className="p-4 bg-slate-50/50 flex items-center justify-between text-slate-400">
+                  <Users className="w-5 h-5" />
+                  <button
+                    onClick={addReference}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Entry
+                  </button>
+                  <div className="w-5 h-5 opacity-0"></div>
+                </div>
+              </div>
+            )}
+          </Droppable>
         );
 
       case 'languages':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Languages</h4>
-              <Button
-                onClick={addLanguage}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Language</span>
-              </Button>
-            </div>
+        if (editingEntryId) {
+          const langIndex = (data.languages || []).findIndex(l => l.id === editingEntryId);
+          const lang = (data.languages || [])[langIndex];
+          if (!lang) { setEditingEntryId(null); return null; }
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {(data.languages || []).map((lang, index) => (
-                <motion.div
-                  key={lang.id}
-                  className="p-4 rounded-xl border bg-background/50"
-                  layout
+          return (
+            <div className="space-y-6 p-2">
+              <div className="flex items-center justify-between border-b pb-4">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wide text-xs">Edit Language</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Language Name</Label>
+                  <RichTextEditor
+                    value={lang.name}
+                    onChange={(value) => handleLanguageChange(langIndex, 'name', value)}
+                    placeholder="Spanish"
+                    minHeight="50px"
+                  />
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase">Proficiency Level</Label>
+                  <select
+                    value={lang.level}
+                    onChange={(e) => handleLanguageChange(langIndex, 'level', e.target.value as Language['level'])}
+                    className="w-full h-11 px-3 rounded-xl border-none bg-slate-50 focus:ring-2 focus:ring-orange-500/20"
+                  >
+                    <option value="native">Native</option>
+                    <option value="fluent">Fluent</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="basic">Basic</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  onClick={() => setEditingEntryId(null)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 px-8 rounded-xl flex items-center gap-2 shadow-sm"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <h5 className="font-medium">Language {index + 1}</h5>
-                    <Button
-                      onClick={() => removeLanguage(index)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Language Name</Label>
-                      <Input
-                        value={lang.name}
-                        onChange={(e) => handleLanguageChange(index, 'name', e.target.value)}
-                        placeholder="Spanish"
-                        className="bg-background/50"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Proficiency Level</Label>
-                      <select
-                        value={lang.level}
-                        onChange={(e) => handleLanguageChange(index, 'level', e.target.value as Language['level'])}
-                        className="w-full px-3 py-2 rounded-lg border bg-background/50 focus:ring-2 focus:ring-primary/30"
-                      >
-                        <option value="native">Native</option>
-                        <option value="fluent">Fluent</option>
-                        <option value="intermediate">Intermediate</option>
-                        <option value="basic">Basic</option>
-                      </select>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+                  <Check className="w-4 h-4" />
+                  Done
+                </Button>
+              </div>
             </div>
-          </div>
+          );
+        }
+
+        return (
+          <Droppable droppableId="entries-languages" type="languages">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col border rounded-xl overflow-hidden divide-y divide-slate-100"
+              >
+                {(data.languages || []).map((lang, index) => (
+                  <Draggable key={lang.id} draggableId={lang.id} index={index}>
+                    {(draggableProvided, snapshot) => (
+                      <div
+                        ref={draggableProvided.innerRef}
+                        {...draggableProvided.draggableProps}
+                        className={cn(
+                          "group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-white",
+                          snapshot.isDragging ? "shadow-md z-[100]" : "",
+                          lang.visible === false ? "opacity-50" : ""
+                        )}
+                        onClick={() => setEditingEntryId(lang.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div {...draggableProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded touch-none">
+                            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-400" />
+                          </div>
+                          <span className="font-medium text-slate-700">
+                            {index + 1}. {lang.name || 'Enter Language Name'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              lang.visible === false ? "bg-slate-100 text-slate-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleEntryVisibility('languages', index);
+                            }}
+                          >
+                            {lang.visible === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            className="p-1.5 hover:bg-orange-100 rounded-md text-slate-400 hover:text-orange-500 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeLanguage(index);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+                <div className="p-4 bg-slate-50/50 flex items-center justify-between text-slate-400">
+                  <Languages className="w-5 h-5" />
+                  <button
+                    onClick={addLanguage}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Entry
+                  </button>
+                  <div className="w-5 h-5 opacity-0"></div>
+                </div>
+              </div>
+            )}
+          </Droppable>
         );
 
       case 'declaration':
@@ -1977,6 +3066,32 @@ const ResumeForm: React.FC<ResumeFormProps> = ({ data, onChange, selectedSection
           </div>
         );
 
+      case 'job':
+        return (
+          <div className="space-y-4">
+            <h4 className="font-medium text-slate-700 uppercase tracking-wider text-xs">Job Target</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Desired Position</Label>
+                <RichTextEditor
+                  value={data.jobTitle || ''}
+                  onChange={(value) => onChange({ ...data, jobTitle: value })}
+                  placeholder="Software Engineer"
+                  minHeight="50px"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Target Company (Optional)</Label>
+                <Input
+                  value={data.design?.themeColor === 'custom' ? '' : '' /* Placeholder for now if needed */}
+                  placeholder="Google, etc."
+                  className="bg-white"
+                />
+              </div>
+            </div>
+          </div>
+        );
+
       case 'custom':
         return (
           <div className="space-y-4">
@@ -1985,11 +3100,11 @@ const ResumeForm: React.FC<ResumeFormProps> = ({ data, onChange, selectedSection
             <div className="p-4 rounded-xl border bg-background/50 space-y-4">
               <div className="space-y-2">
                 <Label>Section Title</Label>
-                <Input
+                <RichTextEditor
                   value={data.custom?.title || ''}
-                  onChange={(e) => handleCustomChange('title', e.target.value)}
+                  onChange={(value) => handleCustomChange('title', value)}
                   placeholder="Additional Information"
-                  className="bg-background/50"
+                  minHeight="50px"
                 />
               </div>
 
@@ -2015,194 +3130,146 @@ const ResumeForm: React.FC<ResumeFormProps> = ({ data, onChange, selectedSection
   return (
     <div className="h-full">
       <div className="max-w-4xl mx-auto p-4">
-        <div className="space-y-2">
-          {/* Always render Personal Information first */}
-          {(() => {
-            const section = {
-              id: 'personalInfo',
-              label: 'Personal Information',
-              icon: User,
-              description: 'Basic contact details',
-            };
-            const isExpanded = expandedSection === section.id;
-            return (
-              <motion.div
-                key={section.id}
-                className="glass-card border border-border/30 rounded-xl overflow-hidden"
-                layout
-              >
-                <motion.button
-                  onClick={() => toggleSection(section.id)}
-                  className={cn(
-                    "w-full p-6 text-left transition-all duration-300 relative overflow-hidden group",
-                    isExpanded
-                      ? "bg-gradient-to-r from-primary/20 to-accent/20 border-b border-border/30"
-                      : "bg-glass-light/20 hover:bg-glass-medium/30"
-                  )}
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.99 }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      {/* Disabled drag handle for alignment */}
-                      <div
-                        className="cursor-not-allowed p-2 mr-2 rounded opacity-40"
-                        aria-label="Drag handle (disabled)"
-                        style={{ display: 'flex', alignItems: 'center' }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                          <circle cx="4" cy="5" r="1.5" fill="#888" />
-                          <circle cx="4" cy="10" r="1.5" fill="#888" />
-                          <circle cx="4" cy="15" r="1.5" fill="#888" />
-                          <circle cx="10" cy="5" r="1.5" fill="#888" />
-                          <circle cx="10" cy="10" r="1.5" fill="#888" />
-                          <circle cx="10" cy="15" r="1.5" fill="#888" />
-                        </svg>
-                      </div>
-                      <section.icon className={cn("w-6 h-6 mr-2", isExpanded ? "text-primary" : "text-muted-foreground")} />
-                      <div>
-                        <h3 className={cn(
-                          "font-semibold text-lg transition-colors",
-                          isExpanded ? "text-primary" : "text-foreground"
-                        )}>
-                          {section.label}
-                        </h3>
-                        <p className="text-sm text-muted-foreground">{section.description}</p>
-                      </div>
-                    </div>
-                    <span className="text-muted-foreground flex items-center justify-center" style={{ minWidth: 24, minHeight: 24 }}>
-                      <svg
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        style={{ display: 'block', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }}
-                      >
-                        <path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </span>
-                  </div>
-                </motion.button>
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.3, ease: "easeInOut" }}
-                    >
-                      <div className="p-6 pt-0">
-                        {renderSectionContent(section.id)}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            );
-          })()}
+        <div className="space-y-4">
+          {/* Always render Personal Information first as a special card */}
+          <motion.div
+            layout
+            className={cn(
+              "bg-white border rounded-2xl overflow-hidden mb-6 transition-all",
+              isEditingPersonal ? "border-orange-500 shadow-xl ring-1 ring-orange-500/10" : "border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+              data.hiddenSections?.includes('personalInfo') ? "opacity-50" : ""
+            )}
+          >
+            {renderSectionContent('personalInfo')}
+          </motion.div>
 
-          {/* Drag-and-drop for the rest of the selected sections in order, skipping personalInfo */}
+          {/* Drag-and-drop for all sections except Personal Information */}
           <DragDropContext onDragEnd={handleDragEnd}>
             <Droppable droppableId="sections-droppable">
               {(provided) => (
-                <div ref={provided.innerRef} {...provided.droppableProps}>
-                  {selectedSections.filter(id => id !== 'personalInfo').map((sectionId, index) => {
-                    const section = allSections.find(s => s.id === sectionId);
-                    if (!section) return null;
-                    const isExpanded = expandedSection === sectionId;
-                    const Icon = section.icon;
-                    return (
-                      <Draggable key={sectionId} draggableId={sectionId} index={index}>
-                        {(dragProvided, dragSnapshot) => (
-                          <div
-                            ref={dragProvided.innerRef}
-                            {...dragProvided.draggableProps}
-                            className={cn(
-                              "glass-card border border-border/30 rounded-xl overflow-hidden mb-2",
-                              dragSnapshot.isDragging ? "shadow-lg bg-primary/10" : ""
-                            )}
-                          >
-                            <motion.div layout>
-                              <motion.button
-                                onClick={() => toggleSection(sectionId)}
-                                className={cn(
-                                  "w-full p-6 text-left transition-all duration-300 relative overflow-hidden group",
-                                  isExpanded
-                                    ? "bg-gradient-to-r from-primary/20 to-accent/20 border-b border-border/30"
-                                    : "bg-glass-light/20 hover:bg-glass-medium/30"
-                                )}
-                                whileHover={{ scale: 1.01 }}
-                                whileTap={{ scale: 0.99 }}
-                              >
-                                <div className="flex items-center justify-between">
+                <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-4">
+                  {selectedSections
+                    .filter(id => id !== 'personalInfo')
+                    .map((sectionId, index) => {
+                      // Special case for summary since it has a different icon than the dynamic ones
+                      const isSummary = sectionId === 'summary';
+                      const section = allSections.find(s => s.id === sectionId);
+
+                      const isExpanded = expandedSection === sectionId;
+                      const Icon = isSummary ? FileText : (section?.icon || FileText);
+                      const label = isSummary ? (data.sectionLabels?.summary || 'Professional Summary') : (data.sectionLabels?.[sectionId] || section?.label || 'Section');
+
+                      return (
+                        <Draggable key={sectionId} draggableId={sectionId} index={index}>
+                          {(dragProvided, dragSnapshot) => (
+                            <div
+                              ref={dragProvided.innerRef}
+                              {...dragProvided.draggableProps}
+                              className={cn(
+                                "bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm transition-all",
+                                dragSnapshot.isDragging ? "shadow-lg ring-2 ring-orange-500/20" : "",
+                                isExpanded ? "border-orange-500 ring-1 ring-orange-500/10" : "",
+                                data.hiddenSections?.includes(sectionId) ? "opacity-50" : ""
+                              )}
+                            >
+                              <div className="flex flex-col">
+                                <motion.div
+                                  onClick={() => toggleSection(sectionId)}
+                                  className={cn(
+                                    "w-full p-5 text-left transition-colors flex items-center justify-between group cursor-pointer",
+                                    isExpanded ? "bg-slate-50/50" : "hover:bg-slate-50"
+                                  )}
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      toggleSection(sectionId);
+                                    }
+                                  }}
+                                >
                                   <div className="flex items-center space-x-4">
-                                    {/* Drag handle icon before heading */}
-                                    <div
-                                      {...dragProvided.dragHandleProps}
-                                      role="button"
-                                      tabIndex={0}
-                                      className="cursor-grab active:cursor-grabbing p-2 mr-2 rounded hover:bg-primary/10"
-                                      aria-label="Drag to reorder section"
-                                      style={{ display: 'flex', alignItems: 'center' }}
-                                      onClick={(e) => e.stopPropagation()}
-                                      onKeyDown={(e) => e.key === 'Enter' && e.stopPropagation()}
-                                    >
-                                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                        <circle cx="4" cy="5" r="1.5" fill="#888" />
-                                        <circle cx="4" cy="10" r="1.5" fill="#888" />
-                                        <circle cx="4" cy="15" r="1.5" fill="#888" />
-                                        <circle cx="10" cy="5" r="1.5" fill="#888" />
-                                        <circle cx="10" cy="10" r="1.5" fill="#888" />
-                                        <circle cx="10" cy="15" r="1.5" fill="#888" />
-                                      </svg>
+                                    <div className="flex items-center gap-2">
+                                      <div {...dragProvided.dragHandleProps} className="p-1 hover:bg-slate-100 rounded text-slate-300 hover:text-slate-400 cursor-grab active:cursor-grabbing transition-colors">
+                                        <GripVertical className="w-5 h-5" />
+                                      </div>
+                                      <div
+                                        className={cn("p-2 rounded-lg transition-colors",
+                                          isExpanded ? "bg-orange-500 text-white" : "bg-slate-100 text-slate-500"
+                                        )}
+                                      >
+                                        <Icon className="w-5 h-5" />
+                                      </div>
                                     </div>
-                                    <Icon className={cn("w-6 h-6 mr-2", isExpanded ? "text-primary" : "text-muted-foreground")} />
-                                    <div>
-                                      <h3 className={cn(
-                                        "font-semibold text-lg transition-colors",
-                                        isExpanded ? "text-primary" : "text-foreground"
-                                      )}>
-                                        {section.label}
-                                      </h3>
-                                      <p className="text-sm text-muted-foreground">{section.description}</p>
+                                    <div className="flex items-center gap-3">
+                                      {editingHeaderId === sectionId ? (
+                                        <Input
+                                          autoFocus
+                                          value={label}
+                                          onChange={(e) => handleSectionLabelChange(sectionId, e.target.value)}
+                                          onBlur={() => setEditingHeaderId(null)}
+                                          onKeyDown={(e) => e.key === 'Enter' && setEditingHeaderId(null)}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="h-7 py-0 px-2 text-sm font-bold uppercase tracking-wide bg-slate-50 border-orange-200 focus-visible:ring-orange-500/20 w-48"
+                                        />
+                                      ) : (
+                                        <h3 className="font-bold text-slate-800 uppercase tracking-wide text-sm">
+                                          {label}
+                                        </h3>
+                                      )}
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          className={cn(
+                                            "flex items-center gap-1.5 px-3 py-1 border rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors",
+                                            editingHeaderId === sectionId ? "border-orange-500 bg-orange-50 text-orange-600" : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                                          )}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingHeaderId(editingHeaderId === sectionId ? null : sectionId);
+                                          }}
+                                        >
+                                          <Edit2 className="w-3 h-3" />
+                                          {editingHeaderId === sectionId ? 'Save' : 'Edit Heading'}
+                                        </button>
+                                        <button
+                                          className={cn(
+                                            "p-1.5 rounded-md transition-colors",
+                                            data.hiddenSections?.includes(sectionId) ? "bg-slate-100 text-slate-600" : "hover:bg-slate-100 text-slate-400 hover:text-slate-600"
+                                          )}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleSectionVisibility(sectionId);
+                                          }}
+                                        >
+                                          {data.hiddenSections?.includes(sectionId) ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
-                                  <span className="text-muted-foreground flex items-center justify-center" style={{ minWidth: 24, minHeight: 24 }}>
-                                    <svg
-                                      width="24"
-                                      height="24"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      style={{ display: 'block', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }}
+                                  {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                                </motion.div>
+
+                                <AnimatePresence>
+                                  {isExpanded && (
+                                    <motion.div
+                                      initial={{ height: 0, opacity: 0 }}
+                                      animate={{ height: "auto", opacity: 1 }}
+                                      exit={{ height: 0, opacity: 0 }}
+                                      className="p-5 pt-2"
                                     >
-                                      <path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                  </span>
-                                </div>
-                              </motion.button>
-                              <AnimatePresence>
-                                {isExpanded && (
-                                  <motion.div
-                                    initial={{ height: 0, opacity: 0 }}
-                                    animate={{ height: "auto", opacity: 1 }}
-                                    exit={{ height: 0, opacity: 0 }}
-                                    transition={{ duration: 0.3, ease: "easeInOut" }}
-                                  >
-                                    <div className="p-6 pt-0">
                                       {renderSectionContent(sectionId)}
-                                    </div>
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
-                            </motion.div>
-                          </div>
-                        )}
-                      </Draggable>
-                    );
-                  })}
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            </div>
+
+
+                          )
+                          }
+                        </Draggable>
+                      );
+                    })}
                   {provided.placeholder}
                 </div>
               )}
@@ -2210,25 +3277,22 @@ const ResumeForm: React.FC<ResumeFormProps> = ({ data, onChange, selectedSection
           </DragDropContext>
 
           {/* Add Sections Button */}
-          {onOpenSectionsModal && (
-            <motion.div
-              className="glass-card border border-dashed border-border/50 rounded-xl overflow-hidden"
-              whileHover={{ scale: 1.01 }}
-            >
-              <button
+          {
+            onOpenSectionsModal && (
+              <Button
                 onClick={onOpenSectionsModal}
-                className="w-full p-6 text-left transition-all duration-300 hover:bg-primary/5 flex items-center justify-center space-x-3"
+                variant="outline"
+                className="w-full p-8 border-dashed border-2 border-slate-200 rounded-2xl bg-slate-50/50 hover:bg-slate-50 hover:border-orange-300 transition-all text-slate-500 hover:text-orange-500 flex items-center justify-center gap-3"
               >
-                <Plus className="w-5 h-5 text-primary" />
-                <span className="font-medium text-primary">Add Sections</span>
-              </button>
-            </motion.div>
-          )}
-        </div>
-      </div>
-    </div>
+                <Plus className="w-5 h-5" />
+                <span className="font-bold uppercase tracking-wider text-xs">Add Content</span>
+              </Button>
+            )
+          }
+        </div >
+      </div >
+    </div >
   );
-  // ...existing code...
-
 }
+
 export default ResumeForm;

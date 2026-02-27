@@ -1,8 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getResumesCollection, isMongoDBConfigured } from '@/lib/mongodb';
-import type { ResumeData } from '@/lib/types';
 import { ObjectId } from 'mongodb';
 import { getUserIdFromRequest } from '@/lib/auth/withAuth';
+import { resumeSchema } from '@/lib/validation/resume.schema';
+import { apiRateLimiter } from '@/lib/rateLimiter';
+
+async function checkLimit(request: NextRequest, userId: string) {
+  const { success, reset } = await apiRateLimiter.limit(userId);
+  if (!success) {
+    return NextResponse.json(
+      { error: 'Too many requests', retryAfter: Math.ceil((reset - Date.now()) / 1000) },
+      { status: 429 }
+    );
+  }
+  return null;
+}
 
 /**
  * GET /api/resumes
@@ -13,6 +25,9 @@ export async function GET(request: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const limitError = await checkLimit(request, userId);
+  if (limitError) return limitError;
 
   try {
     if (!isMongoDBConfigured()) {
@@ -28,6 +43,13 @@ export async function GET(request: NextRequest) {
     const collection = await getResumesCollection();
 
     if (resumeId) {
+      if (!ObjectId.isValid(resumeId)) {
+        return NextResponse.json(
+          { error: 'Resume not found' },
+          { status: 404 }
+        );
+      }
+
       const resume = await collection.findOne({
         _id: new ObjectId(resumeId),
         userId,
@@ -74,6 +96,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const limitError = await checkLimit(request, userId);
+  if (limitError) return limitError;
+
   try {
     if (!isMongoDBConfigured()) {
       return NextResponse.json(
@@ -83,7 +108,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { ...resumeData } = body;
+    const parsed = resumeSchema.safeParse(body);
+    
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid resume data', details: parsed.error.format() },
+        { status: 400 }
+      );
+    }
+
+    const resumeData = parsed.data;
 
     const collection = await getResumesCollection();
 
@@ -121,6 +155,9 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const limitError = await checkLimit(request, userId);
+  if (limitError) return limitError;
+
   try {
     if (!isMongoDBConfigured()) {
       return NextResponse.json(
@@ -130,12 +167,29 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, ...resumeData } = body;
+    const { id, ...dataToValidate } = body;
 
     if (!id) {
       return NextResponse.json(
         { error: 'Resume ID is required' },
         { status: 400 }
+      );
+    }
+
+    const parsed = resumeSchema.safeParse(dataToValidate);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid resume data', details: parsed.error.format() },
+        { status: 400 }
+      );
+    }
+
+    const resumeData = parsed.data;
+
+    if (!ObjectId.isValid(id)) {
+      return NextResponse.json(
+        { error: 'Resume not found (Invalid ID)' },
+        { status: 404 }
       );
     }
 
@@ -184,6 +238,9 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const limitError = await checkLimit(request, userId);
+  if (limitError) return limitError;
+
   try {
     if (!isMongoDBConfigured()) {
       return NextResponse.json(
@@ -199,6 +256,13 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json(
         { error: 'Resume ID is required' },
         { status: 400 }
+      );
+    }
+
+    if (!ObjectId.isValid(resumeId)) {
+      return NextResponse.json(
+        { error: 'Resume not found' },
+        { status: 404 }
       );
     }
 
